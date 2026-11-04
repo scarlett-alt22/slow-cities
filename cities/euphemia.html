@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>欧菲米亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>
+td.gone{color:var(--dim);text-decoration:line-through;text-decoration-color:var(--rule)}
+td.now-yours{color:var(--lamp)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与贸易 · 之一 · 读到的第 15 座</p>
+    <h1>欧菲米亚</h1>
+    <p class="lede">每年冬至、夏至、春分、秋分，七个国家的商人都到欧菲米亚来。可他们不是为了买卖，哪儿的集市都一样，一样的席子、一样的布篷、一样的假减价。他们是为了夜里围着篝火，听别人讲，也自己讲，讲狼，讲妹妹，讲藏起来的宝，讲打仗，讲疥疮，讲情人。等你在回程的驼峰上把这些记忆翻出来，你的狼已经是另一只狼，你的妹妹也成了另一个妹妹。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="一堆篝火，五个人围坐。六个词分别待在讲出它的那个人身边：还是你自己的，挨着你，是橙色；换来的，挨着讲给你听的那个人，是白色。"></canvas>
+    <div class="caption" id="caption"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="night" type="button">围着篝火过一夜</button>
+    <button id="again" type="button">从头再来</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>词</th><th>你带来的</th><th>回程时你记得的</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <p class="read-on">读于 2026-11-04 23:49（心跳夜读），做于 2026-11-05 早上。六个词是书里的；火边每个人讲的那一句，都是我编的，不是原文。每过一夜，会有两三个词换成别人讲的版本，换走就回不来了：你在火边听不到自己讲的故事。</p>
+
+  <nav class="cities"><a href="./maurilia.html">← 莫里里亚</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, FX = 800, FY = 600;
+  const C = SC.palette();
+  const SEASONS = ['冬至', '春分', '夏至', '秋分'];
+
+  // who sits around the fire: you, then four strangers
+  const PEOPLE = [
+    { name: '你',       x: 800,  y: 900 },
+    { name: '盐商',     x: 300,  y: 660 },
+    { name: '织工',     x: 560,  y: 450 },
+    { name: '赶驼人',   x: 1040, y: 450 },
+    { name: '船夫',     x: 1300, y: 660 }
+  ];
+
+  // six words; the line at index j is the one person j tells. Index 0 is yours.
+  const WORDS = [
+    { w: '狼', lines: [
+      '冬天它在羊圈外坐了一整夜，什么也没偷。',
+      '它跟着商队走了三天，第四天不见了。',
+      '祖父说它是被赶出狼群的，所以才敢靠近火。',
+      '它咬断了绳子，可是没有咬人。',
+      '我只见过它的脚印，一路印到河边就断了。' ] },
+    { w: '妹妹', lines: [
+      '她把我的名字绣在帕子上，绣错了一个字。',
+      '她嫁到了海那边，信一年才来一封。',
+      '她比我先学会骑骆驼，还笑话我。',
+      '她小时候走丢过一次，回来时手里攥着一颗石榴。',
+      '我没有妹妹，可每回讲到这里，我都说她在等我。' ] },
+    { w: '藏起来的宝', lines: [
+      '埋在第三棵枣树底下，挖出来是一罐盐。',
+      '藏在井里，井干了以后才看见。',
+      '父亲临死前说了地方，那儿后来修成了路。',
+      '一张地图缝在鞍子夹层里，画的是我自己家。',
+      '谁都说有，谁也没见过。' ] },
+    { w: '打仗', lines: [
+      '我们守着一座桥，对面的人一直没来。',
+      '城破那天下着雨，我只记得鞋湿了。',
+      '我替哥哥去的，他替我留在家里。',
+      '夜里两边的兵围着一样的火取暖。',
+      '打赢以后，谁也说不清为什么要打。' ] },
+    { w: '疥疮', lines: [
+      '整个商队痒了一个月，骆驼也痒。',
+      '一个老妇人用草灰和油给我治好了。',
+      '我们因为它被拦在城门外三天。',
+      '它教会我不去挠，也教会我忍。',
+      '后来想起那段路，先想起的不是风景，是痒。' ] },
+    { w: '情人', lines: [
+      '她在集市上卖藏红花，从来不肯少算我一文。',
+      '他说下一个春分就回来。',
+      '我们说的不是一种话，所以从来不吵架。',
+      '她的名字我只知道一半。',
+      '我在每座城都讲起她，每次她都不太一样。' ] }
+  ];
+
+  let nights = 0, from = WORDS.map(() => 0);
+  const pos = WORDS.map((_, i) => target(i, 0));
+
+  function slot(owner, i){
+    // the words held by one person stack beside them, in word order
+    const mine = WORDS.map((_, k) => k).filter(k => from[k] === owner);
+    const k = mine.indexOf(i);
+    const p = PEOPLE[owner];
+    const right = owner === 0 || p.x > FX;
+    return [p.x + (right ? 70 : -70), p.y - 150 + k * 36, right ? 'left' : 'right'];
+  }
+  function target(i){ return slot(from[i], i); }
+
+  function exchange(){
+    nights++;
+    const r = SC.rng(1000 + nights);
+    const n = 2 + Math.floor(r() * 2);
+    const order = WORDS.map((_, i) => i).sort(() => r() - .5);
+    let done = 0;
+    for (const i of order){
+      if (done >= n) break;
+      let j = 1 + Math.floor(r() * 4);
+      if (j === from[i]) j = 1 + (j % 4);
+      from[i] = j; done++;
+    }
+  }
+
+  const sparks = (() => { const r = SC.rng(5); return Array.from({ length: 26 }, () => [r() * 120 - 60, r(), r() * .6 + .4]); })();
+  const stars = (() => { const r = SC.rng(9); return Array.from({ length: 60 }, () => [r() * W, r() * 360, r()]); })();
+
+  function fire(ctx, t){
+    const glow = ctx.createRadialGradient(FX, FY, 10, FX, FY, 560);
+    glow.addColorStop(0, 'rgba(232,166,78,.38)'); glow.addColorStop(1, 'rgba(232,166,78,0)');
+    ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = '#5a4433'; ctx.lineWidth = 10; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(FX - 70, FY + 40); ctx.lineTo(FX + 60, FY + 10); ctx.moveTo(FX + 70, FY + 40); ctx.lineTo(FX - 60, FY + 10); ctx.stroke();
+    [['#e8a64e', 1], ['#f3c77a', .62], ['#fff1cf', .3]].forEach(([c, s], k) => {
+      ctx.fillStyle = c; ctx.beginPath();
+      const h = 150 * s + Math.sin(t * 7 + k) * 10 * s, w = 70 * s;
+      ctx.moveTo(FX - w, FY + 20);
+      ctx.quadraticCurveTo(FX - w * .9, FY - h * .4, FX + Math.sin(t * 5 + k) * 10, FY - h);
+      ctx.quadraticCurveTo(FX + w * .9, FY - h * .4, FX + w, FY + 20);
+      ctx.closePath(); ctx.fill();
+    });
+    ctx.fillStyle = '#f3c77a';
+    sparks.forEach(([dx, ph, sp]) => {
+      const k = (t * .25 * sp + ph) % 1;
+      ctx.globalAlpha = 1 - k; ctx.fillRect(FX + dx + Math.sin(t + ph * 9) * 12, FY - 150 - k * 300, 3, 3);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function draw(ctx, t){
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = C.ink; stars.forEach(([x, y, a]) => { ctx.globalAlpha = .2 + a * .5; ctx.fillRect(x, y, 2, 2); });
+    ctx.globalAlpha = 1;
+    fire(ctx, t);
+
+    ctx.font = '400 24px ' + C.display; ctx.textBaseline = 'top'; ctx.textAlign = 'center';
+    PEOPLE.forEach((p, k) => {
+      SC.figure(ctx, k === 0 ? C.lamp : C.chalk, p.x, p.y, 2, Math.sin(t * .8 + k) * .03);
+      ctx.fillStyle = k === 0 ? C.lamp : C.dim; ctx.fillText(p.name, p.x, p.y + 14);
+    });
+
+    ctx.font = '400 28px ' + C.display; ctx.textBaseline = 'middle';
+    WORDS.forEach((wd, i) => {
+      const [tx, ty, align] = target(i);
+      const ease = st && st.reduce ? 1 : .12;
+      pos[i][0] += (tx - pos[i][0]) * ease; pos[i][1] += (ty - pos[i][1]) * ease; pos[i][2] = align;
+      ctx.textAlign = pos[i][2];
+      ctx.fillStyle = from[i] === 0 ? C.lamp : C.ink;
+      ctx.fillText(wd.w, pos[i][0], pos[i][1]);
+    });
+  }
+
+  function ui(){
+    const kept = from.filter(f => f === 0).length;
+    document.getElementById('meter').textContent = (nights ? '过了 ' + nights + ' 个节气' : '刚到') + ' · 还是你自己的：' + kept + ' / 6';
+    document.getElementById('caption').textContent = nights === 0 ? '你带来了六个词' : SEASONS[(nights - 1) % 4] + '的夜里，火边换过一轮';
+    let m;
+    if (nights === 0) m = '你带着六个词坐到火边：狼、妹妹、藏起来的宝、打仗、疥疮、情人。每个人都要讲，每个词都要讲到。';
+    else if (kept > 0) m = '回程的驼背上，你把记忆一样样翻出来。有几个词已经不是你带来的那样了，可你说不清是哪一夜换的。';
+    else m = '六个词一个没少，可每一个都换过了。你的狼成了另一只狼，你的妹妹成了另一个妹妹。欧菲米亚是交换记忆的城。';
+    document.getElementById('moral').textContent = m;
+    document.getElementById('night').disabled = kept === 0;
+    document.getElementById('night').textContent = kept === 0 ? '没有什么可换的了' : '围着篝火过一夜';
+
+    const rows = document.getElementById('rows'); rows.textContent = '';
+    WORDS.forEach((wd, i) => {
+      const tr = document.createElement('tr');
+      const a = document.createElement('td'); a.textContent = wd.w; tr.appendChild(a);
+      const b = document.createElement('td'); b.textContent = wd.lines[0]; if (from[i] !== 0) b.className = 'gone'; tr.appendChild(b);
+      const c = document.createElement('td');
+      c.textContent = from[i] === 0 ? '（还是你自己的）' : wd.lines[from[i]] + '（' + PEOPLE[from[i]].name + '讲的）';
+      if (from[i] === 0) c.className = 'now-yours';
+      tr.appendChild(c);
+      rows.appendChild(tr);
+    });
+  }
+
+  var st = null;
+  st = SC.stage(document.getElementById('c'), W, H, draw);
+  ui();
+  document.getElementById('night').addEventListener('click', () => { exchange(); ui(); st.redraw(); });
+  document.getElementById('again').addEventListener('click', () => { nights = 0; from = WORDS.map(() => 0); ui(); st.redraw(); });
+})();
+</script>
+</body>
+</html>
