@@ -1,0 +1,42 @@
+/* Slow Cities — shared page chrome. One night palette for every city; each city draws its own scene. */
+:root{
+  --sky:#141c33;
+  --sky-hi:#2b2442;
+  --ink:#eee5d0;
+  --dim:#a39db4;
+  --lamp:#e8a64e;
+  --chalk:#c9dde4;
+  --rule:#353452;
+  --display:"Noto Serif SC","Songti SC","STSong","SimSun",serif;
+  --body:"Noto Serif SC","Songti SC","STSong","SimSun",serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{background:var(--sky)}
+body{margin:0;background:var(--sky);color:var(--ink);font-family:var(--body);font-size:15px}
+a{color:var(--lamp)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--chalk);outline-offset:3px}
+.wrap{max-width:920px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 44px;display:grid;gap:22px}
+.eyebrow{font-size:12px;letter-spacing:.22em;color:var(--dim);margin:0}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(30px,6vw,46px);letter-spacing:.12em;margin:6px 0 0;text-wrap:balance}
+h2{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:.08em;margin:0}
+.lede,.moral{max-width:36em;line-height:1.85;margin:0}
+.lede{margin-top:10px}
+.moral{min-height:3.7em}
+.stage{position:relative;border:1px solid var(--rule);border-radius:3px;overflow:hidden;aspect-ratio:16/10;max-width:100%;background:var(--sky)}
+.stage canvas{display:block;width:100%;height:100%}
+.caption{position:absolute;left:14px;bottom:12px;right:14px;font-size:13px;line-height:1.6;text-shadow:0 1px 3px var(--sky);pointer-events:none}
+.controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+button{font-family:var(--body);font-size:15px;padding:10px 20px;border-radius:2px;border:1px solid var(--lamp);background:transparent;color:var(--lamp);cursor:pointer;letter-spacing:.06em}
+button.primary{background:var(--lamp);color:var(--sky);font-weight:700}
+button:disabled{opacity:.45;cursor:default}
+.meter{font-family:var(--mono);font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:320px;font-size:14px}
+th,td{padding:9px 8px;border-bottom:1px solid var(--rule);text-align:left}
+th{font-weight:400;font-size:12px;letter-spacing:.16em;color:var(--dim)}
+.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.read-on{font-size:13px;color:var(--dim);line-height:1.7;margin:0}
+nav.cities{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px;border-top:1px solid var(--rule);padding-top:16px}
+footer{font-size:12px;line-height:1.7;color:var(--dim);max-width:40em}

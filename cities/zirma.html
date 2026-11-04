@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>吉尔玛 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与符号 · 之二 · 读到的第 9 座</p>
+    <h1>吉尔玛</h1>
+    <p class="lede">从吉尔玛回来的人，各自带回不一样的记忆。马可·波罗记得满天飞艇、满街文身铺、挤满人的闷热地铁；同行的旅伴却发誓，飞艇只见过一艘，文身匠只有一个。每按一次「再回忆一次」，你就把这座城讲一遍，看看讲完以后它变成什么样。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="吉尔玛的夜景：楼群、飞艇、文身铺、地铁和月台"></canvas>
+    <div class="caption" id="caption"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="recall" type="button">再回忆一次</button>
+    <button id="reset" type="button">回到第一次看见它</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral"></p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>符号</th><th class="num">旅伴发誓见过</th><th class="num">你记得</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <p class="read-on">读于 2026-11-04 05:47（心跳夜读）。白色细线是吉尔玛第一次出现时的楼群轮廓，每回忆一次就淡一点；橙色是讲出来的那座城。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./despina.html">← 苔斯皮那</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, STREET = 700, TUNNEL_TOP = 790, TUNNEL_BOT = 950;
+  const C = SC.palette();
+  const MOTIFS = [
+    { k:'ship',   name:'飞过塔尖的飞艇',     unit:'艘', grow:.75, cap:28 },
+    { k:'mad',    name:'飞檐上摇晃的疯子',   unit:'个', grow:.55, cap:14 },
+    { k:'tattoo', name:'文身铺',             unit:'家', grow:.8,  cap:22 },
+    { k:'train',  name:'地铁车厢',           unit:'节', grow:.65, cap:16 },
+    { k:'fan',    name:'月台上扇扇子的女人', unit:'个', grow:.6,  cap:14 }
+  ];
+  const MORALS = [
+    '这是第一次看见的吉尔玛：一艘飞艇，一个站在飞檐上的疯子，一家文身铺，一列短短的地铁。',
+    '回来以后，你第一次跟人讲起它。讲到飞艇的时候，天上好像不止一艘。',
+    '再讲一遍，楼也多了，后面一层一层冒出没见过的窗户。',
+    '旅伴们在旁边摇头：飞艇只有一艘，文身匠只有一个，扇扇子的胖女人也只有一个。',
+    '可你记得的那座城越来越满，第一次看见的轮廓越来越淡。',
+    '卡尔维诺说，记忆也在夸张：它一遍遍重复那些符号，好让人确信那座城真的存在过。'
+  ];
+  let recalls = 0, counts = {}, scene = null;
+
+  function makeBuilding(r, x, depth){
+    const w = 90 + r() * 90, h = 200 + r() * 340;
+    const cols = Math.max(2, Math.floor(w / 26)), rows = Math.floor(h / 34);
+    const lit = []; for (let i = 0; i < cols * rows; i++) lit.push(r() < 0.42);
+    return { x, w, h, cols, rows, lit, depth };
+  }
+
+  function build(){
+    const base = [], r0 = SC.rng(7);
+    let x = 20;
+    while (x < W - 60){ const b = makeBuilding(r0, x, 0); base.push(b); x += b.w + 18 + r0() * 40; }
+    const extra = [];
+    for (let i = 0; i < recalls * 5; i++){ const r = SC.rng(1000 + i * 13); extra.push(makeBuilding(r, r() * (W - 120), 1 + (i % 3))); }
+    const byHeight = base.concat(extra).sort((a, b) => b.h - a.h);
+    const ships = [], mads = [], signs = [], fans = [];
+    for (let i = 0; i < counts.ship; i++){ const r = SC.rng(200 + i * 7); ships.push({ x: r() * W, y: 70 + r() * 260, s: .55 + r() * .7, v: 6 + r() * 14 }); }
+    for (let i = 0; i < counts.mad; i++){ const b = byHeight[i % byHeight.length], r = SC.rng(300 + i); mads.push({ b, off: r() * (b.w - 20) + 10, ph: r() * 6.28 }); }
+    for (let i = 0; i < counts.tattoo; i++){ const r = SC.rng(400 + i * 3); signs.push({ x: 40 + r() * (W - 120), y: STREET - 70 - r() * 160, ph: r() * 6.28 }); }
+    for (let i = 0; i < counts.fan; i++){ const r = SC.rng(500 + i * 5); fans.push({ x: 60 + ((i + .5) / counts.fan) * (W - 120) + (r() - .5) * 40, ph: r() * 6.28 }); }
+    const stars = [], rs = SC.rng(99); for (let i = 0; i < 90; i++) stars.push({ x: rs() * W, y: rs() * 420, a: .2 + rs() * .6 });
+    scene = { base, extra, ships, mads, signs, fans, stars };
+  }
+
+  function drawBuilding(ctx, b, fill, alpha){
+    ctx.globalAlpha = alpha; ctx.fillStyle = fill; ctx.fillRect(b.x, STREET - b.h, b.w, b.h);
+    ctx.fillStyle = C.lamp; const cw = b.w / b.cols;
+    for (let r = 0; r < b.rows; r++) for (let c = 0; c < b.cols; c++)
+      if (b.lit[r * b.cols + c]) ctx.fillRect(b.x + c * cw + cw * .3, STREET - b.h + 14 + r * 34, cw * .4, 14);
+    ctx.globalAlpha = 1;
+  }
+
+  function draw(ctx, t){
+    const s = scene;
+    const g = ctx.createLinearGradient(0, 0, 0, STREET); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = C.ink; for (const st of s.stars){ ctx.globalAlpha = st.a; ctx.fillRect(st.x, st.y, 2, 2); } ctx.globalAlpha = 1;
+
+    for (const sh of s.ships){
+      const x = ((sh.x + sh.v * t) % (W + 300)) - 150;
+      ctx.save(); ctx.translate(x, sh.y); ctx.scale(sh.s, sh.s);
+      ctx.fillStyle = C.dim; ctx.beginPath(); ctx.ellipse(0, 0, 90, 26, 0, 0, 6.29); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(80, 0); ctx.lineTo(104, -18); ctx.lineTo(104, 18); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = C.lamp; ctx.fillRect(-18, 26, 36, 12);
+      ctx.restore();
+    }
+
+    for (const b of s.extra) drawBuilding(ctx, b, C.rule, .35 + .15 / b.depth);
+    for (const b of s.base) drawBuilding(ctx, b, C.sky, 1);
+    for (const m of s.mads) SC.figure(ctx, C.ink, m.b.x + m.off, STREET - m.b.h, .9, t ? Math.sin(t * 2.2 + m.ph) * .22 : .12);
+
+    ctx.font = '700 22px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const sg of s.signs){
+      ctx.save(); ctx.translate(sg.x, sg.y); ctx.rotate(t ? Math.sin(t * 1.5 + sg.ph) * .05 : 0);
+      ctx.strokeStyle = C.dim; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-18, -24); ctx.lineTo(-18, -12); ctx.moveTo(18, -24); ctx.lineTo(18, -12); ctx.stroke();
+      ctx.fillStyle = C.sky; ctx.fillRect(-34, -12, 68, 34); ctx.strokeStyle = C.lamp; ctx.strokeRect(-34, -12, 68, 34);
+      ctx.fillStyle = C.lamp; ctx.fillText('文身', 0, 5); ctx.restore();
+    }
+
+    ctx.fillStyle = C.rule; ctx.fillRect(0, STREET, W, 6);
+    ctx.fillStyle = C.sky; ctx.fillRect(0, STREET + 6, W, H - STREET);
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 3; ctx.strokeRect(-4, TUNNEL_TOP, W + 8, TUNNEL_BOT - TUNNEL_TOP);
+
+    for (const f of s.fans){
+      SC.figure(ctx, C.ink, f.x, TUNNEL_TOP + 70, .8, 0);
+      ctx.save(); ctx.translate(f.x + 10, TUNNEL_TOP + 42); ctx.rotate((t ? Math.sin(t * 5 + f.ph) * .5 : 0) - .6);
+      ctx.fillStyle = C.lamp; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 20, -1.2, 1.2); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+
+    const carW = 130, n = counts.train, len = n * (carW + 8);
+    const tx = t ? ((t * 120) % (W + len)) - len : 40;
+    for (let i = 0; i < n; i++){
+      const x = tx + i * (carW + 8);
+      ctx.fillStyle = C.dim; ctx.fillRect(x, TUNNEL_TOP + 84, carW, 52);
+      ctx.fillStyle = C.lamp; for (let w = 0; w < 4; w++) ctx.fillRect(x + 12 + w * 30, TUNNEL_TOP + 94, 20, 16);
+    }
+
+    ctx.globalAlpha = .9 * Math.pow(.72, recalls); ctx.strokeStyle = C.chalk; ctx.lineWidth = 2.5;
+    for (const b of s.base) ctx.strokeRect(b.x, STREET - b.h, b.w, b.h);
+    ctx.globalAlpha = 1;
+  }
+
+  function ui(){
+    const rows = document.getElementById('rows'); rows.textContent = '';
+    for (const m of MOTIFS){
+      const tr = document.createElement('tr');
+      for (const [txt, cls] of [[m.name, ''], ['1 ' + m.unit, 'num'], [counts[m.k] + ' ' + m.unit, 'num']]){
+        const td = document.createElement('td'); td.textContent = txt; if (cls) td.className = cls; tr.appendChild(td);
+      }
+      tr.lastChild.style.color = 'var(--lamp)'; tr.children[1].style.color = 'var(--chalk)';
+      rows.appendChild(tr);
+    }
+    document.getElementById('meter').textContent = '讲过 ' + recalls + ' 遍 · 第一次的轮廓还剩 ' + Math.round(100 * Math.pow(.72, recalls)) + '%';
+    document.getElementById('moral').textContent = MORALS[Math.min(recalls, MORALS.length - 1)];
+    document.getElementById('caption').textContent = recalls === 0 ? '第一次看见' : '第 ' + recalls + ' 次讲起';
+  }
+
+  function reset(){ recalls = 0; for (const m of MOTIFS) counts[m.k] = 1; build(); ui(); st.redraw(); }
+  function recall(){
+    recalls++;
+    const r = SC.rng(recalls * 97 + 5);
+    for (const m of MOTIFS){ const n = counts[m.k]; counts[m.k] = Math.min(m.cap, n + Math.max(1, Math.round(n * m.grow * (.6 + r() * .8)))); }
+    build(); ui(); st.redraw();
+  }
+
+  for (const m of MOTIFS) counts[m.k] = 1;
+  build();
+  const st = SC.stage(document.getElementById('c'), W, H, draw);
+  ui();
+  document.getElementById('recall').addEventListener('click', recall);
+  document.getElementById('reset').addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>左拉 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与记忆 · 之四 · 读到的第 7 座</p>
+    <h1>左拉</h1>
+    <p class="lede">左拉不算漂亮，可是看一眼就忘不掉。她的街道、门窗和喷泉一个挨一个，排得像一份乐谱，一个音符都不能挪。睡不着的人可以在脑子里把她从头走一遍。为了让人记住，她只好永远一动不动。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="左拉画成一行五线谱：九处地方是九个音符，按固定顺序排着"></canvas>
+    <div class="caption" id="caption"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="walk" type="button">在脑子里走一遍</button>
+    <button id="decade" type="button">过去十年</button>
+    <button id="move" type="button" disabled title="为了好记，左拉什么都不许挪">把喷泉挪一格</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral"></p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th class="num">顺序</th><th>左拉的一格</th><th>存在这一格里的东西</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <p class="read-on">读于 2026-11-04 04:05（心跳夜读）。橙色的音符是左拉本身，白色空心的是你记住的那份。按「过去十年」看她怎么样，「把喷泉挪一格」永远按不动。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="../index.html">全部城市</a><a href="./despina.html">苔斯皮那 →</a></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, Y0 = 300, GAP = 56;
+  const C = SC.palette();
+  const PLACES = [
+    ['大铜钟', '一位名人的名字'],
+    ['理发店的条纹窗帘', '一种品德'],
+    ['九眼喷泉的水池', '一个数字'],
+    ['天文馆的玻璃塔楼', '一颗星座'],
+    ['卖西瓜的货亭', '一种植物的分类'],
+    ['隐士与雄狮的雕像', '一场战役的日期'],
+    ['土耳其浴室', '一种矿物'],
+    ['街角的咖啡店', '一句名言的片段'],
+    ['通往海港的小巷', '下一次从哪里开始']
+  ];
+  const r0 = SC.rng(4);
+  const notes = PLACES.map((p, i) => ({ name: p[0], x: 170 + i * (W - 340) / (PLACES.length - 1), pitch: Math.floor(r0() * 9), tilt: r0() }));
+  let years = 0, walks = 0, walkStart = -1, lit = 0;
+
+  const decay = () => Math.min(1, years / 60);
+  const yOf = p => Y0 + 4 * GAP - p * GAP / 2;
+
+  function staff(ctx, d){
+    const r = SC.rng(77 + years);
+    ctx.strokeStyle = C.dim; ctx.lineWidth = 2;
+    for (let l = 0; l < 5; l++){
+      const y = Y0 + l * GAP;
+      for (let s = 0; s < 40; s++){
+        if (r() < d * 1.1) continue;
+        const x0 = 80 + s * (W - 160) / 40;
+        ctx.globalAlpha = .75 - d * .45;
+        ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + (W - 160) / 40, y); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function head(ctx, x, y, fill, color){
+    ctx.save(); ctx.translate(x, y); ctx.rotate(-.35);
+    ctx.beginPath(); ctx.ellipse(0, 0, 26, 18, 0, 0, 6.29);
+    if (fill){ ctx.fillStyle = color; ctx.fill(); } else { ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke(); }
+    ctx.restore();
+  }
+
+  function draw(ctx, t){
+    const d = decay();
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    staff(ctx, d);
+
+    // the walk in your head
+    if (walkStart >= 0){
+      const k = Math.min(1, (t - walkStart) / 6);
+      lit = Math.max(lit, Math.floor(k * notes.length + .001));
+      const x = 120 + k * (W - 240);
+      ctx.fillStyle = C.lamp; ctx.globalAlpha = .9;
+      ctx.beginPath(); ctx.arc(x, Y0 - 70, 9, 0, 6.29); ctx.fill(); ctx.globalAlpha = 1;
+      if (k >= 1){ walkStart = -1; walks++; ui(); }
+    }
+
+    ctx.font = '400 26px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    notes.forEach((n, i) => {
+      const y = yOf(n.pitch);
+      // the city itself: sinks, cracks and fades as the decades pass
+      if (d < 1){
+        const sink = d * 140, a = 1 - d;
+        ctx.globalAlpha = a;
+        ctx.strokeStyle = C.lamp; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(n.x + 24, y + sink - 6); ctx.lineTo(n.x + 24, y + sink - 150 + d * 90); ctx.stroke();
+        head(ctx, n.x, y + sink, true, C.lamp);
+        if (d > .25){
+          ctx.strokeStyle = C.sky; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(n.x - 14, y + sink - 10); ctx.lineTo(n.x + 2, y + sink + 2); ctx.lineTo(n.x - 4, y + sink + 14); ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+      // what you remember stays where it was
+      ctx.globalAlpha = i < lit ? .95 : .35;
+      head(ctx, n.x, y, false, C.chalk);
+      ctx.fillStyle = C.ink; ctx.globalAlpha = i < lit ? .95 : .55;
+      const label = n.name.length > 5 ? [n.name.slice(0, 4), n.name.slice(4)] : [n.name];
+      label.forEach((s, j) => ctx.fillText(s, n.x, Y0 + 4 * GAP + 90 + j * 32));
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  const MORALS = {
+    start: '街道、门窗、喷泉一个挨一个，像一份乐谱。睡不着的时候，你可以在脑子里把她从头走一遍。',
+    walked: '最博学的人把名字、日期、星座一格格存进她的格子里，像存进一个蜂巢。走得越熟，越不会丢。',
+    early: '为了让人好记，左拉一直一动不动。不动的城开始萧条。',
+    late: '墙裂了，音符往下沉，五线谱一段段断掉。',
+    gone: '你还能在脑子里把她从头走到尾，可是再动身去左拉，已经没有用了。地上没有人记得她了。'
+  };
+
+  function ui(){
+    const d = decay();
+    let m = MORALS.start;
+    if (years === 0 && walks > 0) m = MORALS.walked;
+    if (years > 0) m = MORALS.early;
+    if (d >= .5) m = MORALS.late;
+    if (d >= 1) m = MORALS.gone;
+    document.getElementById('moral').textContent = m;
+    document.getElementById('meter').textContent = '过去 ' + years + ' 年 · 在脑子里走过 ' + walks + ' 遍';
+    document.getElementById('caption').textContent = d >= 1 ? '只剩你记得的那份' : years === 0 ? '左拉，今天' : years + ' 年以后';
+    const btn = document.getElementById('decade');
+    btn.textContent = d >= 1 ? '回到左拉还在的时候' : '过去十年';
+  }
+
+  const rows = document.getElementById('rows');
+  PLACES.forEach((p, i) => {
+    const tr = document.createElement('tr');
+    [[String(i + 1), 'num'], [p[0], ''], [p[1], '']].forEach(([txt, cls]) => { const td = document.createElement('td'); td.textContent = txt; if (cls) td.className = cls; tr.appendChild(td); });
+    rows.appendChild(tr);
+  });
+
+  const st = SC.stage(document.getElementById('c'), W, H, draw);
+  ui();
+
+  document.getElementById('walk').addEventListener('click', () => {
+    lit = 0;
+    if (st.reduce){ lit = notes.length; walks++; ui(); st.redraw(); return; }
+    walkStart = performance.now() / 1000;
+  });
+  document.getElementById('decade').addEventListener('click', () => {
+    if (decay() >= 1){ years = 0; walks = 0; lit = 0; } else { years += 10; }
+    ui(); st.redraw();
+  });
+})();
+</script>
+</body>
+</html>

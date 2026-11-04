@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>苔斯皮那 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>
+.from{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;width:100%;max-width:560px}
+.from label{grid-column:1 / -1;font-size:13px;letter-spacing:.16em;color:var(--dim)}
+.from span{font-size:14px;color:var(--dim)}
+.from input{width:100%;accent-color:var(--lamp);height:28px;margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与欲望 · 之三 · 读到的第 8 座</p>
+    <h1>苔斯皮那</h1>
+    <p class="lede">去苔斯皮那有两条路，坐船，或者骑骆驼。从沙漠那边过来的赶骆驼人，远远看见塔尖、天线、飘着的风向袋和冒烟的烟囱，以为那是一艘船，能把他从沙漠里带走。从海上过来的水手，在雾里看见驼峰和挂着流苏的鞍，以为那是一头骆驼，能把他从海上驮走。苔斯皮那夹在两片荒漠中间，每个人看到的样子，都是从他背后那片荒漠里来的。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="地平线上一座城的剪影，前景随你从哪边来而变成沙丘或海浪，剪影本身从不改变"></canvas>
+    <div class="caption" id="caption"></div>
+  </div>
+
+  <div class="controls">
+    <div class="from">
+      <label for="side">你从哪边来</label>
+      <span>沙漠</span>
+      <input type="range" id="side" min="0" max="100" value="18">
+      <span>海</span>
+    </div>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>同一处轮廓</th><th>赶骆驼的人看见</th><th>水手看见</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <p class="read-on">读于 2026-11-04 04:56（心跳夜读），做于 2026-11-04 傍晚。剪影是页面打开时画好的一张图，之后每一帧都只是把这同一张图贴上去，所以拉滑块时它一个像素都不会动，动的只有前景和旁边的字。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./zora.html">← 左拉</a><a href="../index.html">全部城市</a><a href="./zirma.html">吉尔玛 →</a></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, HZ = 640;
+  const C = SC.palette();
+  const INK = '#0b0f1e';
+
+  // Each part of the outline: where it is, what the camel driver reads, what the sailor reads,
+  // and where its label sits (row 0 or 1 above the city, or 'side' for the base).
+  const PARTS = [
+    { name: '左边弯起来的高塔', at: [462, 452], desert: '吊杆',       sea: '长脖子',     lx: 170,  row: 1 },
+    { name: '细高塔和三角旗',   at: [600, 352], desert: '桅杆和风向袋', sea: '鞍上的小旗', lx: 420,  row: 0 },
+    { name: '大圆顶',           at: [700, 480], desert: '舱顶',       sea: '前峰',       lx: 640,  row: 1 },
+    { name: '两顶之间的尖亭',   at: [820, 500], desert: '驾驶台',     sea: '绣鞍和流苏', lx: 860,  row: 0 },
+    { name: '小圆顶',           at: [930, 488], desert: '雷达罩',     sea: '后峰',       lx: 1060, row: 1 },
+    { name: '带横杆的杆子',     at: [1010, 398], desert: '天线',      sea: '驮架',       lx: 1200, row: 0 },
+    { name: '矮粗的方柱',       at: [1058, 505], desert: '烟囱',      sea: '尾巴',       lx: 1400, row: 1 },
+    { name: '墙脚四个拱门',     at: [800, 622], desert: '吃水线',     sea: '四条腿',     lx: 1150, row: 'side' }
+  ];
+
+  // The city is drawn once, into its own bitmap. Every frame pastes that same bitmap,
+  // so nothing the slider does can change a pixel of it.
+  const S = 2;
+  const city = document.createElement('canvas');
+  city.width = W * S; city.height = H * S;
+  (function paintCity(){
+    const g = city.getContext('2d');
+    g.scale(S, S);
+    g.fillStyle = INK; g.strokeStyle = INK; g.lineCap = 'round'; g.lineJoin = 'round';
+    // long wall, slightly raised at both ends like a hull or a long body
+    g.beginPath();
+    g.moveTo(505, HZ); g.quadraticCurveTo(505, 575, 528, 556);
+    g.lineTo(1088, 556); g.quadraticCurveTo(1118, 575, 1112, HZ);
+    g.closePath(); g.fill();
+    // the leaning tower at the left: a neck with a head, or a crane with its hook
+    g.lineWidth = 26;
+    g.beginPath(); g.moveTo(548, 566); g.quadraticCurveTo(505, 520, 470, 466); g.stroke();
+    g.beginPath(); g.ellipse(456, 456, 30, 17, -.35, 0, 6.29); g.fill();
+    // two domes: a cabin roof and a radome, or two humps
+    g.beginPath(); g.arc(700, 560, 88, Math.PI, 0); g.fill();
+    g.beginPath(); g.arc(930, 560, 74, Math.PI, 0); g.fill();
+    // the pointed pavilion between them, with a fringe hanging from its eaves
+    g.beginPath(); g.moveTo(778, 560); g.lineTo(780, 522); g.lineTo(820, 486); g.lineTo(860, 522); g.lineTo(862, 560); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(766, 524); g.lineTo(874, 524); g.lineTo(874, 530); g.lineTo(766, 530); g.closePath(); g.fill();
+    g.lineWidth = 3;
+    for (let x = 770; x <= 870; x += 8){ g.beginPath(); g.moveTo(x, 530); g.lineTo(x, 546 + (x % 16 ? 0 : 5)); g.stroke(); }
+    // a thin tower with a triangular flag
+    g.lineWidth = 9;
+    g.beginPath(); g.moveTo(600, 560); g.lineTo(600, 352); g.stroke();
+    g.beginPath(); g.moveTo(603, 356); g.lineTo(668, 374); g.lineTo(603, 392); g.closePath(); g.fill();
+    // a pole with crossbars
+    g.lineWidth = 7;
+    g.beginPath(); g.moveTo(1010, 560); g.lineTo(1010, 398); g.stroke();
+    g.lineWidth = 5;
+    [[420, 34], [450, 24], [478, 16]].forEach(([y, w]) => { g.beginPath(); g.moveTo(1010 - w, y); g.lineTo(1010 + w, y); g.stroke(); });
+    // a short thick column, with three puffs stuck above it
+    g.fillRect(1044, 502, 30, 60);
+    [[1066, 486, 13], [1084, 468, 10], [1104, 454, 8]].forEach(([x, y, r]) => { g.beginPath(); g.arc(x, y, r, 0, 6.29); g.fill(); });
+    // four arches cut out of the foot of the wall: gates, or the gaps between legs
+    g.globalCompositeOperation = 'destination-out';
+    [628, 732, 852, 956].forEach(x => {
+      g.beginPath(); g.moveTo(x, HZ); g.lineTo(x, 612); g.arc(x + 36, 612, 36, Math.PI, 0); g.lineTo(x + 72, HZ); g.closePath(); g.fill();
+    });
+  })();
+
+  const stars = (() => { const r = SC.rng(8); return Array.from({ length: 70 }, () => [r() * W, r() * 420, r() * 1.6 + .6, r()]); })();
+  const dunes = (() => { const r = SC.rng(3); return [0, 1, 2].map(i => Array.from({ length: 11 }, (_, k) => [k * 200 - 150, 720 + i * 90 + r() * 40])); })();
+
+  let v = 18;
+  const desertA = () => Math.max(0, Math.min(1, (44 - v) / 30));
+  const seaA = () => Math.max(0, Math.min(1, (v - 56) / 30));
+
+  function sky(ctx){
+    const g = ctx.createLinearGradient(0, 0, 0, HZ);
+    g.addColorStop(0, C.sky); g.addColorStop(.75, C.skyHi); g.addColorStop(1, '#4a3550');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, HZ);
+    // a band of light along the horizon, so the outline reads
+    const b = ctx.createLinearGradient(0, HZ - 150, 0, HZ);
+    b.addColorStop(0, 'rgba(232,166,78,0)'); b.addColorStop(1, 'rgba(232,166,78,.38)');
+    ctx.fillStyle = b; ctx.fillRect(0, HZ - 150, W, 150);
+    ctx.fillStyle = C.ink;
+    stars.forEach(([x, y, s, a]) => { ctx.globalAlpha = .25 + a * .5; ctx.fillRect(x, y, s, s); });
+    ctx.globalAlpha = 1;
+    // the ground between you and the city, neither sand nor water yet
+    ctx.fillStyle = '#181d30'; ctx.fillRect(0, HZ, W, H - HZ);
+  }
+
+  function desert(ctx, a, t){
+    if (a <= 0) return;
+    ctx.globalAlpha = a;
+    dunes.forEach((pts, i) => {
+      ctx.fillStyle = ['#3a2f3a', '#4d3a3a', '#61463c'][i];
+      ctx.beginPath(); ctx.moveTo(0, H);
+      ctx.lineTo(pts[0][0], pts[0][1]);
+      for (let k = 1; k < pts.length; k++){
+        const [x0, y0] = pts[k - 1], [x1, y1] = pts[k];
+        ctx.quadraticCurveTo(x0 + 100, Math.min(y0, y1) - 40, x1, y1);
+      }
+      ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+    });
+    // a camel, a rider, looking at the horizon
+    const x = 300, y = 930, bob = Math.sin(t * 1.6) * 3;
+    ctx.strokeStyle = C.lamp; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - 80, y); ctx.lineTo(x - 70, y - 60 + bob);
+    ctx.moveTo(x - 40, y); ctx.lineTo(x - 45, y - 60 + bob);
+    ctx.moveTo(x + 30, y); ctx.lineTo(x + 35, y - 60 + bob);
+    ctx.moveTo(x + 60, y); ctx.lineTo(x + 55, y - 60 + bob);
+    ctx.moveTo(x - 85, y - 62 + bob);
+    ctx.quadraticCurveTo(x - 60, y - 140 + bob, x - 20, y - 80 + bob);
+    ctx.quadraticCurveTo(x + 20, y - 140 + bob, x + 60, y - 70 + bob);
+    ctx.lineTo(x + 95, y - 95 + bob); ctx.lineTo(x + 105, y - 150 + bob); ctx.lineTo(x + 130, y - 145 + bob);
+    ctx.stroke();
+    SC.figure(ctx, C.ink, x - 20, y - 84 + bob, 1.3, .08);
+    ctx.globalAlpha = 1;
+  }
+
+  function sea(ctx, a, t){
+    if (a <= 0) return;
+    ctx.globalAlpha = a;
+    const g = ctx.createLinearGradient(0, HZ, 0, H);
+    g.addColorStop(0, '#1d2a44'); g.addColorStop(1, '#101830');
+    ctx.fillStyle = g; ctx.fillRect(0, HZ, W, H - HZ);
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 2;
+    for (let i = 0; i < 9; i++){
+      const y = HZ + 20 + i * i * 4.4, amp = 2 + i * 1.6, ph = t * (.6 + i * .05) + i;
+      ctx.globalAlpha = a * (.18 + i * .05);
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += 20) ctx.lineTo(x, y + Math.sin(x / (60 + i * 18) + ph) * amp);
+      ctx.stroke();
+    }
+    // a small boat, a sailor, looking at the horizon
+    const x = 1280, y = 900 + Math.sin(t * 1.2) * 6, tilt = Math.sin(t * 1.2 + 1) * .04;
+    ctx.globalAlpha = a;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(tilt);
+    ctx.strokeStyle = C.lamp; ctx.lineWidth = 5; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(-120, -30); ctx.lineTo(120, -30); ctx.lineTo(90, 10); ctx.lineTo(-95, 10); ctx.closePath(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(40, -30); ctx.lineTo(40, -170); ctx.lineTo(110, -50); ctx.lineTo(40, -50); ctx.stroke();
+    SC.figure(ctx, C.ink, -30, -32, 1.3, -.06);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function labels(ctx, key, a){
+    if (a <= .05) return;
+    ctx.font = '400 28px ' + C.display; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    PARTS.forEach(p => {
+      const ly = p.row === 'side' ? 700 : p.row === 0 ? 170 : 240;
+      const lx = p.lx;
+      ctx.globalAlpha = a * .7; ctx.strokeStyle = C.chalk; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(lx, ly + (p.row === 'side' ? -18 : 18)); ctx.lineTo(p.at[0], p.at[1]); ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.at[0], p.at[1], 4, 0, 6.29); ctx.fillStyle = C.chalk; ctx.fill();
+      ctx.globalAlpha = a; ctx.fillStyle = C.ink;
+      ctx.fillText(p[key], lx, ly);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function draw(ctx, t){
+    const da = desertA(), sa = seaA();
+    sky(ctx);
+    sea(ctx, sa, t);
+    desert(ctx, da, t);
+    ctx.drawImage(city, 0, 0, W, H);
+    labels(ctx, 'desert', da);
+    labels(ctx, 'sea', sa);
+  }
+
+  const MORALS = {
+    desert: '骑着骆驼从沙漠来的人，看它是一艘船。他想离开沙漠，所以地平线上这座城，就是一艘能把他带走的船。',
+    sea: '从海上来的水手，在雾里看它是一头骆驼。他想离开海，所以地平线上这座城，就是一头能把他驮走的骆驼。',
+    middle: '两边都不站，前景就空了。没有想离开的地方，它就只是地平线上一个说不出像什么的轮廓。'
+  };
+
+  function ui(){
+    const side = v < 44 ? 'desert' : v > 56 ? 'sea' : 'middle';
+    document.getElementById('moral').textContent = MORALS[side];
+    document.getElementById('caption').textContent = side === 'desert' ? '从沙漠这边看' : side === 'sea' ? '从海上看' : '苔斯皮那';
+    document.getElementById('meter').textContent = '剪影改过的像素：0';
+  }
+
+  const rows = document.getElementById('rows');
+  PARTS.forEach(p => {
+    const tr = document.createElement('tr');
+    [p.name, p.desert, p.sea].forEach(txt => { const td = document.createElement('td'); td.textContent = txt; tr.appendChild(td); });
+    rows.appendChild(tr);
+  });
+
+  const st = SC.stage(document.getElementById('c'), W, H, draw);
+  ui();
+  document.getElementById('side').addEventListener('input', e => { v = +e.target.value; ui(); st.redraw(); });
+})();
+</script>
+</body>
+</html>
