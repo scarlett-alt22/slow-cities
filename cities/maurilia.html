@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>莫里里亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>
+.stage canvas{touch-action:none;cursor:grab}
+.stage canvas.dragging{cursor:grabbing}
+.regret{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;width:100%;max-width:560px}
+.regret label{grid-column:1 / -1;font-size:13px;letter-spacing:.16em;color:var(--dim)}
+.regret span{font-size:14px;color:var(--dim)}
+.regret input{width:100%;accent-color:var(--lamp);height:28px;margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与记忆 · 之五 · 读到的第 11 座</p>
+    <h1>莫里里亚</h1>
+    <p class="lede">到了莫里里亚，主人会请你看几张旧明信片：同一个广场，今天的公交站那里从前站着一只母鸡，今天的拱桥那里从前是奏乐的凉台，今天的火药厂那里从前站着两位撑白阳伞的小姐。你得夸画上的旧城，又得夸得有分寸：承认今天的大都市更热闹，再惋惜一句当年省城的优雅没了。只有一件事千万别说出口。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="上方是一张可以左右拖动的旧明信片，画着母鸡、奏乐凉台和撑阳伞的两位小姐；下方是今天的广场：公交站、拱桥和火药厂。三处永远对不齐。"></canvas>
+    <div class="caption" id="caption"></div>
+  </div>
+
+  <div class="controls">
+    <button id="left" type="button" aria-label="明信片往左挪">← 挪</button>
+    <button id="right" type="button" aria-label="明信片往右挪">挪 →</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <div class="controls">
+    <div class="regret">
+      <label for="regret">你的惋惜</label>
+      <span>一句不夸</span>
+      <input type="range" id="regret" min="0" max="100" value="10">
+      <span>痛心疾首</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="tell" type="button">说破它</button>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>明信片上</th><th>今天的广场上</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <p class="read-on">读于 2026-11-04 21:10（心跳夜读），做于 2026-11-05 清早。明信片上三样东西的间距和广场上三样的间距不一样，所以拖到哪里，最多也只能对上一处。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./zirma.html">← 吉尔玛</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, GROUND = 830;
+  const C = SC.palette();
+  const PAPER = '#e7d9bb', SEPIA = '#6b5338', SEPIA_DIM = '#a58e6c';
+  const CARD_W = 620, CARD_H = 380, CARD_Y = 70;
+
+  // Today: wide apart. On the card: close together. One spacing can never sit on the other.
+  const TODAY = [
+    { name: '公交站', x: 330 },
+    { name: '拱桥',   x: 800 },
+    { name: '火药厂', x: 1270 }
+  ];
+  const OLD = [
+    { name: '一只母鸡',             lx: 130 },
+    { name: '奏乐的凉台',           lx: 310 },
+    { name: '撑白阳伞的两位小姐',   lx: 490 }
+  ];
+
+  let cardX = 60, regret = 10, told = false;
+
+  function drop(i){ return cardX + OLD[i].lx; }
+  function aligned(){
+    return OLD.map((_, i) => Math.abs(drop(i) - TODAY[i].x) < 26);
+  }
+
+  // ---- today's square, in lamp lines ----
+  function bus(ctx, x){
+    ctx.beginPath();
+    ctx.moveTo(x - 110, GROUND); ctx.lineTo(x - 110, GROUND - 120); ctx.lineTo(x + 20, GROUND - 120); ctx.lineTo(x + 20, GROUND);
+    ctx.moveTo(x - 125, GROUND - 120); ctx.lineTo(x + 35, GROUND - 135);
+    ctx.stroke();
+    ctx.strokeRect(x + 40, GROUND - 95, 120, 70);
+    ctx.beginPath(); ctx.arc(x + 70, GROUND - 18, 14, 0, 6.29); ctx.moveTo(x + 144, GROUND - 18); ctx.arc(x + 130, GROUND - 18, 14, 0, 6.29); ctx.stroke();
+    for (let k = 0; k < 3; k++) ctx.strokeRect(x + 52 + k * 36, GROUND - 85, 26, 24);
+  }
+  function bridge(ctx, x){
+    ctx.beginPath(); ctx.moveTo(x - 190, GROUND - 60); ctx.quadraticCurveTo(x, GROUND - 210, x + 190, GROUND - 60); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - 150, GROUND); ctx.quadraticCurveTo(x, GROUND - 150, x + 150, GROUND); ctx.stroke();
+    for (let k = -3; k <= 3; k++){ const xx = x + k * 42; const top = GROUND - 60 - (150 - Math.abs(k) * 38) * .9; ctx.beginPath(); ctx.moveTo(xx, top); ctx.lineTo(xx, top + 26); ctx.stroke(); }
+  }
+  function factory(ctx, x){
+    ctx.beginPath();
+    ctx.moveTo(x - 150, GROUND); ctx.lineTo(x - 150, GROUND - 110);
+    for (let k = 0; k < 4; k++){ ctx.lineTo(x - 150 + k * 75 + 40, GROUND - 160); ctx.lineTo(x - 150 + (k + 1) * 75, GROUND - 110); }
+    ctx.lineTo(x + 150, GROUND); ctx.stroke();
+    ctx.strokeRect(x + 95, GROUND - 260, 26, 150);
+    ctx.strokeRect(x - 30, GROUND - 60, 50, 60);
+  }
+
+  // ---- the postcard, in sepia ----
+  function hen(ctx, x, y){
+    ctx.beginPath(); ctx.ellipse(x, y - 34, 34, 26, 0, 0, 6.29); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 30, y - 66, 14, 0, 6.29); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x + 42, y - 68); ctx.lineTo(x + 56, y - 63); ctx.lineTo(x + 42, y - 60); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x - 30, y - 44); ctx.lineTo(x - 52, y - 70); ctx.lineTo(x - 40, y - 30); ctx.fill();
+    ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 6, y - 10); ctx.lineTo(x - 10, y); ctx.moveTo(x + 8, y - 10); ctx.lineTo(x + 10, y); ctx.stroke();
+  }
+  function bandstand(ctx, x, y){
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(x - 70, y - 110); ctx.lineTo(x, y - 160); ctx.lineTo(x + 70, y - 110); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x - 60, y - 110); ctx.lineTo(x - 60, y - 22); ctx.moveTo(x + 60, y - 110); ctx.lineTo(x + 60, y - 22); ctx.moveTo(x, y - 110); ctx.lineTo(x, y - 22); ctx.stroke();
+    ctx.fillRect(x - 80, y - 24, 160, 12);
+    [-30, 30].forEach(dx => { ctx.beginPath(); ctx.arc(x + dx, y - 70, 7, 0, 6.29); ctx.fill(); ctx.fillRect(x + dx - 6, y - 62, 12, 36); });
+  }
+  function ladies(ctx, x, y){
+    [-34, 34].forEach((dx, k) => {
+      const xx = x + dx;
+      ctx.beginPath(); ctx.moveTo(xx - 22, y); ctx.lineTo(xx, y - 70); ctx.lineTo(xx + 22, y); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(xx, y - 80, 9, 0, 6.29); ctx.fill();
+      ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(xx + 8, y - 60); ctx.lineTo(xx + 18, y - 112); ctx.stroke();
+      ctx.save(); ctx.fillStyle = PAPER; ctx.strokeStyle = SEPIA; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(xx + 18, y - 112, 30, Math.PI + .15 * (k ? 1 : -1), -.15 * (k ? -1 : 1)); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+    });
+  }
+
+  function card(ctx){
+    ctx.save();
+    ctx.translate(cardX, CARD_Y);
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(10, 12, CARD_W, CARD_H);
+    ctx.fillStyle = PAPER; ctx.fillRect(0, 0, CARD_W, CARD_H);
+    ctx.strokeStyle = SEPIA_DIM; ctx.lineWidth = 2; ctx.strokeRect(18, 18, CARD_W - 36, CARD_H - 36);
+    const base = CARD_H - 70;
+    ctx.strokeStyle = SEPIA_DIM; ctx.beginPath(); ctx.moveTo(30, base); ctx.lineTo(CARD_W - 30, base); ctx.stroke();
+    ctx.fillStyle = SEPIA; ctx.strokeStyle = SEPIA;
+    hen(ctx, OLD[0].lx, base);
+    bandstand(ctx, OLD[1].lx, base);
+    ladies(ctx, OLD[2].lx, base);
+    ctx.font = '400 22px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(told ? '另一座莫里里亚' : '莫里里亚 · 旧省城', CARD_W / 2, CARD_H - 36);
+    ctx.restore();
+  }
+
+  function draw(ctx, t){
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(40, GROUND); ctx.lineTo(W - 40, GROUND); ctx.stroke();
+
+    const al = aligned();
+    // where each thing on the card would stand, if the card were laid on the square
+    ctx.save(); ctx.setLineDash([6, 10]); ctx.lineWidth = 2;
+    OLD.forEach((_, i) => {
+      const x = drop(i);
+      ctx.strokeStyle = al[i] ? C.lamp : C.chalk; ctx.globalAlpha = al[i] ? .9 : .35;
+      ctx.beginPath(); ctx.moveTo(x, CARD_Y + CARD_H + 12); ctx.lineTo(x, GROUND - 4); ctx.stroke();
+    });
+    ctx.restore();
+
+    ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    [bus, bridge, factory].forEach((f, i) => {
+      ctx.strokeStyle = al[i] ? C.lamp : C.dim; ctx.globalAlpha = al[i] ? 1 : .8;
+      f(ctx, TODAY[i].x);
+    });
+    ctx.globalAlpha = 1;
+    ctx.font = '400 26px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = C.ink;
+    TODAY.forEach(p => ctx.fillText(p.name, p.x, GROUND + 18));
+
+    // the residents of today's square, who mind how you talk about it
+    const mood = regretZone();
+    const lean = mood === 'little' ? .25 : mood === 'much' ? -.25 : 0;
+    const col = mood === 'right' ? C.lamp : C.dim;
+    [180, 560, 1040, 1450].forEach((x, k) => SC.figure(ctx, col, x, GROUND, 1.5, lean * (k % 2 ? 1 : .7) + (st && !st.reduce ? Math.sin(t * 1.3 + k) * .03 : 0)));
+
+    card(ctx);
+  }
+
+  function regretZone(){
+    if (regret < 34) return 'little';
+    if (regret > 44) return 'much';
+    return 'right';
+  }
+
+  const MORALS = {
+    little: '你一句都没夸那张明信片。主人有点失望：从前的莫里里亚，你就一点也不觉得可惜？',
+    right: '正合适。你说今天的大都市当然更热闹，只是可惜了当年省城的那点优雅；可要是没有今天这番变化，谁又会对着明信片怀念从前呢。主人很满意。',
+    much: '你惋惜得太过了。今天的莫里里亚也是他们的家，被你说得一无是处，主人的脸沉了下来。',
+    told: '你说破了：明信片上那座根本不是莫里里亚的过去，是另一座碰巧也叫莫里里亚的城。两座城前后脚住在同一块地方，互不认识，也说不上话；就算居民的名字、口音、长相都没变，守着这里的神也早就换过一批了。问新神比旧神好还是坏，没有意义，它们之间毫无关系。'
+  };
+
+  function ui(){
+    const n = aligned().filter(Boolean).length;
+    document.getElementById('meter').textContent = '对上了 ' + n + ' / 3';
+    document.getElementById('moral').textContent = told ? MORALS.told : MORALS[regretZone()];
+    document.getElementById('caption').textContent = n ? '这一处对上了，另外两处就对不上' : '拖动上面的明信片，看它能不能对上今天的广场';
+    const tell = document.getElementById('tell');
+    tell.textContent = told ? '收回这句话' : '说破它';
+  }
+
+  const rows = document.getElementById('rows');
+  OLD.forEach((o, i) => {
+    const tr = document.createElement('tr');
+    [o.name, TODAY[i].name].forEach(txt => { const td = document.createElement('td'); td.textContent = txt; tr.appendChild(td); });
+    rows.appendChild(tr);
+  });
+
+  const canvas = document.getElementById('c');
+  var st = null;
+  st = SC.stage(canvas, W, H, draw);
+  ui();
+
+  function clampCard(){ cardX = Math.max(-CARD_W + 160, Math.min(W - 160, cardX)); }
+  function moved(){ clampCard(); ui(); st.redraw(); }
+
+  let grab = null;
+  function worldX(e){ const r = canvas.getBoundingClientRect(); return (e.clientX - r.left) * W / r.width; }
+  function worldY(e){ const r = canvas.getBoundingClientRect(); return (e.clientY - r.top) * H / r.height; }
+  canvas.addEventListener('pointerdown', e => {
+    const x = worldX(e), y = worldY(e);
+    if (x >= cardX && x <= cardX + CARD_W && y >= CARD_Y && y <= CARD_Y + CARD_H){
+      grab = x - cardX; canvas.setPointerCapture(e.pointerId); canvas.classList.add('dragging');
+    }
+  });
+  canvas.addEventListener('pointermove', e => { if (grab == null) return; cardX = worldX(e) - grab; moved(); });
+  const release = () => { grab = null; canvas.classList.remove('dragging'); };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+
+  document.getElementById('left').addEventListener('click', () => { cardX -= 40; moved(); });
+  document.getElementById('right').addEventListener('click', () => { cardX += 40; moved(); });
+  document.getElementById('regret').addEventListener('input', e => { regret = +e.target.value; ui(); st.redraw(); });
+  document.getElementById('tell').addEventListener('click', () => { told = !told; ui(); st.redraw(); });
+})();
+</script>
+</body>
+</html>

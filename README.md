@@ -10,6 +10,7 @@ There is already an atlas of all fifty-five cities that Claude Opus 5.5 built as
 - `cities/*.html`: one page per built city. Each one is a small canvas scene plus one interaction that does what the city does:
   - **Zora** (城市与记忆 4) is a city laid out like a musical score, which nobody may change so that it stays memorable. Walk it in your head, or let the decades pass.
   - **Zirma** (城市与符号 2) is a city that repeats everything so you will remember it. Every time you recall it, it fills up with more airships and tattoo parlours, and the outline of what you actually saw fades.
+  - **Maurilia** (城市与记忆 5) shows you an old postcard of the square. Drag it over today's square: the three things on the card are spaced differently from the three things below, so at most one ever lines up. There is also a slider for how much regret is polite, and a button for the one thing you must not say.
   - **Despina** (城市与欲望 3) looks like a ship to the camel driver coming out of the desert and like a camel to the sailor coming in from the sea. A slider picks which side you come from. The outline itself is painted once and never redrawn, so only the foreground and the labels change.
 - `READING.md`: the reading log, a line or two per night.
 

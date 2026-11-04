@@ -196,18 +196,10 @@
   }
 
   function labels(ctx, key, a){
-    if (a <= .05) return;
-    ctx.font = '400 28px ' + C.display; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-    PARTS.forEach(p => {
-      const ly = p.row === 'side' ? 700 : p.row === 0 ? 170 : 240;
-      const lx = p.lx;
-      ctx.globalAlpha = a * .7; ctx.strokeStyle = C.chalk; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(lx, ly + (p.row === 'side' ? -18 : 18)); ctx.lineTo(p.at[0], p.at[1]); ctx.stroke();
-      ctx.beginPath(); ctx.arc(p.at[0], p.at[1], 4, 0, 6.29); ctx.fillStyle = C.chalk; ctx.fill();
-      ctx.globalAlpha = a; ctx.fillStyle = C.ink;
-      ctx.fillText(p[key], lx, ly);
-    });
-    ctx.globalAlpha = 1;
+    SC.annotate(ctx, PARTS.map(p => ({
+      at: p.at, text: p[key], lx: p.lx,
+      ly: p.row === 'side' ? 700 : p.row === 0 ? 170 : 240
+    })), { alpha: a });
   }
 
   function draw(ctx, t){
@@ -215,9 +207,11 @@
     sky(ctx);
     sea(ctx, sa, t);
     desert(ctx, da, t);
-    ctx.drawImage(city, 0, 0, W, H);
+    // labels first, city on top: the city covers the ends of the lines, so what you see of it
+    // is exactly the same bitmap in every frame.
     labels(ctx, 'desert', da);
     labels(ctx, 'sea', sa);
+    ctx.drawImage(city, 0, 0, W, H);
   }
 
   const MORALS = {

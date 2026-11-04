@@ -48,5 +48,27 @@
     ctx.stroke(); ctx.restore();
   }
 
-  window.SC = { rng, palette, stage, figure };
+  // Labels with leader lines. items: [{ at:[x,y], text, lx, ly }].
+  // Call this BEFORE drawing the thing being labelled, so the thing covers the ends of the
+  // lines and stays exactly as it was. (Despina once drew them after, and its "0 pixels changed"
+  // was only true of the bitmap, not of the screen.)
+  function annotate(ctx, items, o){
+    o = o || {};
+    const a = o.alpha == null ? 1 : o.alpha;
+    if (a <= .05) return;
+    const p = palette();
+    ctx.save();
+    ctx.font = '400 ' + (o.size || 28) + 'px ' + p.display;
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    items.forEach(it => {
+      const below = it.ly > it.at[1];
+      ctx.globalAlpha = a * .7; ctx.strokeStyle = o.line || p.chalk; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(it.lx, it.ly + (below ? -18 : 18)); ctx.lineTo(it.at[0], it.at[1]); ctx.stroke();
+      ctx.globalAlpha = a; ctx.fillStyle = o.color || p.ink;
+      ctx.fillText(it.text, it.lx, it.ly);
+    });
+    ctx.restore();
+  }
+
+  window.SC = { rng, palette, stage, figure, annotate };
 })();
