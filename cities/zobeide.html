@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>佐贝伊德 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与欲望 · 之五 · 读到的第 16 座</p>
+    <h1>佐贝伊德</h1>
+    <p class="lede">好几个国家的男人做过同一个梦：夜里，一个女人在一座陌生的城里奔跑，他们只看得见她的背影，追着追着就追丢了。醒来以后，谁也没找到那座城，却找到了彼此。他们照着梦造了一座城，每人铺一条自己追过的路，在她消失的地方砌上墙，好让她下一次跑不掉。每按一次按钮，就来一个做过这个梦的人。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="从上往下看的佐贝伊德：一座白色的迷宫城，边上有几个出口"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="arrive" type="button">又来一个做过这个梦的人</button>
+    <button id="reset" type="button">回到建城那一夜</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-05 03:14（心跳夜读），做于同一天傍晚。白线是城墙，城边的缺口是出口。橙色的光点是某个人梦里的她，虚线是他在梦里追过的路；梦醒以后，那条路变成一条灰色的街，他每天沿着它去上班。她消失的那个出口会被砌死，所以出口只会越来越少。她本人从没在这座城里出现过，画面里也没有她。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./euphemia.html">← 欧菲米亚</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, COLS = 20, ROWS = 12, CELL = 70, OX = 100, OY = 80;
+  const C = SC.palette();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => reduce ? 1e9 : performance.now() / 1000;
+
+  // Exits on the edge of the city: [kind, row, col, outward dx, outward dy, cell row, cell col]
+  const EXITS = [
+    ['h', 0, 3, 0, -1, 0, 3], ['h', 0, 10, 0, -1, 0, 10], ['h', 0, 16, 0, -1, 0, 16],
+    ['h', ROWS, 5, 0, 1, ROWS - 1, 5], ['h', ROWS, 12, 0, 1, ROWS - 1, 12], ['h', ROWS, 18, 0, 1, ROWS - 1, 18],
+    ['v', 4, 0, -1, 0, 4, 0], ['v', 9, 0, -1, 0, 9, 0],
+    ['v', 2, COLS, 1, 0, 2, COLS - 1], ['v', 8, COLS, 1, 0, 8, COLS - 1]
+  ].map(e => ({ key: e[0] + ':' + e[1] + ':' + e[2], out: [e[3], e[4]], cell: [e[5], e[6]] }));
+
+  const MORALS = [
+    '这是建城那一夜之前的佐贝伊德：一座白色的城，街道绕来绕去，边上还留着十个出口。',
+    '第一个人的梦：她在前面跑，他在后面追，追到城边一个口子，她不见了。醒来后，他把那个口子砌死了。',
+    '又来一个。他在这座城里认出了梦里的几条街，照着她跑过的路走了一遍，在她消失的地方也砌上了墙。',
+    '她再也没有出现过，醒着睡着都没有。他们每天沿着自己追过的那条路去上班，那条路早就跟梦没有关系了。',
+    '新来的人还在来。他们在这里认出自己的梦，就把出口一个个堵上，好让她下次跑不掉。',
+    '早来的人看不懂：这么丑的一座城，又是个陷阱，新来的人为什么偏偏要来？'
+  ];
+  const DONE = '出口全堵上了。这一次，梦里的她在一条死胡同里不见了。陷阱造好的时候，已经没人记得当初为什么要造它。';
+
+  let walls, closed, arrivals, timer = 0;
+
+  function cx(c){ return OX + c * CELL + CELL / 2; }
+  function cy(r){ return OY + r * CELL + CELL / 2; }
+
+  // A perfect maze (every cell reaches every other), the same one every time.
+  function carve(){
+    walls = new Set();
+    for (let r = 0; r <= ROWS; r++) for (let c = 0; c < COLS; c++) walls.add('h:' + r + ':' + c);
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c <= COLS; c++) walls.add('v:' + r + ':' + c);
+    const rand = SC.rng(1923), seen = new Set(['0:0']), stack = [[0, 0]];
+    while (stack.length){
+      const [r, c] = stack[stack.length - 1];
+      const next = neighbours(r, c, true).filter(n => !seen.has(n[0] + ':' + n[1]));
+      if (!next.length){ stack.pop(); continue; }
+      const n = next[Math.floor(rand() * next.length)];
+      walls.delete(n[2]); seen.add(n[0] + ':' + n[1]); stack.push([n[0], n[1]]);
+    }
+    for (const e of EXITS) walls.delete(e.key);
+  }
+
+  // [row, col, wall key between them]; ignoreWalls lists all grid neighbours.
+  function neighbours(r, c, ignoreWalls){
+    const out = [];
+    if (r > 0) out.push([r - 1, c, 'h:' + r + ':' + c]);
+    if (r < ROWS - 1) out.push([r + 1, c, 'h:' + (r + 1) + ':' + c]);
+    if (c > 0) out.push([r, c - 1, 'v:' + r + ':' + c]);
+    if (c < COLS - 1) out.push([r, c + 1, 'v:' + r + ':' + (c + 1)]);
+    return ignoreWalls ? out : out.filter(n => !walls.has(n[2]));
+  }
+
+  // Breadth-first from where he first sees her, to the nearest exit still open.
+  // If none is open, she vanishes at the far end of a dead end instead.
+  function chase(seed){
+    const rand = SC.rng(seed);
+    const start = [1 + Math.floor(rand() * (ROWS - 2)), 1 + Math.floor(rand() * (COLS - 2))];
+    const prev = new Map([[start.join(':'), null]]), order = [start];
+    for (let i = 0; i < order.length; i++){
+      const [r, c] = order[i];
+      for (const n of neighbours(r, c, false)){
+        const k = n[0] + ':' + n[1];
+        if (!prev.has(k)){ prev.set(k, [r, c]); order.push([n[0], n[1]]); }
+      }
+    }
+    const open = EXITS.filter(e => !walls.has(e.key));
+    let target = null, exit = null;
+    for (const cell of order){
+      exit = open.find(e => e.cell[0] === cell[0] && e.cell[1] === cell[1]);
+      if (exit){ target = cell; break; }
+    }
+    if (!target){ target = order[order.length - 1]; exit = null; }
+    const cells = []; let k = target;
+    while (k){ cells.unshift(k); k = prev.get(k.join(':')); }
+    const pts = cells.map(([r, c]) => [cx(c), cy(r)]);
+    const last = pts[pts.length - 1];
+    if (exit) pts.push([last[0] + exit.out[0] * CELL * .55, last[1] + exit.out[1] * CELL * .55]);
+    return { start, pts, exit };
+  }
+
+  function along(pts, f){
+    let total = 0; const seg = [];
+    for (let i = 1; i < pts.length; i++){ const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(d); total += d; }
+    let want = total * Math.max(0, Math.min(1, f));
+    for (let i = 0; i < seg.length; i++){
+      if (want <= seg[i]){ const u = seg[i] ? want / seg[i] : 0; return { i, p: [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * u, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * u] }; }
+      want -= seg[i];
+    }
+    return { i: pts.length - 2, p: pts[pts.length - 1] };
+  }
+
+  function wallLine(ctx, key){
+    const [k, a, b] = key.split(':'); const r = +a, c = +b;
+    ctx.beginPath();
+    if (k === 'h'){ ctx.moveTo(OX + c * CELL, OY + r * CELL); ctx.lineTo(OX + (c + 1) * CELL, OY + r * CELL); }
+    else { ctx.moveTo(OX + c * CELL, OY + r * CELL); ctx.lineTo(OX + c * CELL, OY + (r + 1) * CELL); }
+    ctx.stroke();
+  }
+
+  function polyline(ctx, pts, upto){
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i <= upto.i; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.lineTo(upto.p[0], upto.p[1]); ctx.stroke();
+  }
+
+  function draw(ctx){
+    const now = clock();
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = C.chalk; ctx.globalAlpha = .9; ctx.beginPath(); ctx.arc(1540, 44, 22, 0, 6.29); ctx.fill();
+    ctx.fillStyle = C.sky; ctx.beginPath(); ctx.arc(1530, 38, 20, 0, 6.29); ctx.fill(); ctx.globalAlpha = 1;
+
+    // The white city: pale ground under the streets.
+    ctx.fillStyle = C.rule; ctx.globalAlpha = .45; ctx.fillRect(OX, OY, COLS * CELL, ROWS * CELL); ctx.globalAlpha = 1;
+
+    // Streets to work: every finished dream, now just a grey way through town.
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const a of arrivals){
+      if (now < a.end) continue;
+      ctx.strokeStyle = C.dim; ctx.globalAlpha = .38; ctx.lineWidth = 12;
+      polyline(ctx, a.pts.slice(0, a.exit ? -1 : undefined), { i: (a.exit ? a.pts.length - 2 : a.pts.length - 1), p: a.exit ? a.pts[a.pts.length - 2] : a.pts[a.pts.length - 1] });
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 5; ctx.lineCap = 'square'; ctx.globalAlpha = .75;
+    for (const k of walls) if (!closed.has(k) || now >= closed.get(k)) wallLine(ctx, k);
+    ctx.globalAlpha = 1;
+    for (const [k, at] of closed){
+      const age = now - at; if (age < 0 || age > 3) continue;
+      ctx.strokeStyle = C.lamp; ctx.lineWidth = 9; ctx.globalAlpha = 1 - age / 3; wallLine(ctx, k);
+    }
+    ctx.globalAlpha = 1; ctx.lineCap = 'round';
+
+    // Everyone who came stays, standing where the dream began.
+    for (const a of arrivals){ if (now >= a.end) SC.figure(ctx, C.ink, a.pts[0][0], a.pts[0][1] + 22, .62, 0); }
+
+    // The dream that is happening now.
+    const a = arrivals[arrivals.length - 1];
+    if (a && now < a.end + 1.6){
+      const f = a.end > a.start ? (now - a.start) / (a.end - a.start) : 1;
+      const at = along(a.pts, f);
+      ctx.setLineDash([10, 12]); ctx.strokeStyle = C.lamp; ctx.lineWidth = 4; ctx.globalAlpha = .9;
+      polyline(ctx, a.pts, at); ctx.setLineDash([]); ctx.globalAlpha = 1;
+      if (f < 1){
+        const glow = ctx.createRadialGradient(at.p[0], at.p[1], 0, at.p[0], at.p[1], 34);
+        glow.addColorStop(0, C.lamp); glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow; ctx.fillRect(at.p[0] - 34, at.p[1] - 34, 68, 68);
+      } else {
+        const k = Math.min(1, (now - a.end) / 1.6);
+        ctx.strokeStyle = C.lamp; ctx.globalAlpha = 1 - k; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(at.p[0], at.p[1], 14 + k * 40, 0, 6.29); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  function exitsLeft(){ return EXITS.filter(e => !walls.has(e.key)).length; }
+
+  function ui(){
+    const n = arrivals.length, left = exitsLeft();
+    document.getElementById('meter').textContent = '来过 ' + n + ' 个做这个梦的人 · 出口还剩 ' + left + ' / ' + EXITS.length + ' · 她出现过 0 次';
+    const last = arrivals[n - 1];
+    document.getElementById('moral').textContent = n && !last.exit ? DONE : MORALS[Math.min(n, MORALS.length - 1)];
+  }
+
+  function caption(text){ document.getElementById('caption').textContent = text; }
+
+  function arrive(){
+    const n = arrivals.length + 1;
+    const c = chase(n * 131 + 17);
+    const start = clock(), end = reduce ? start : start + .5 + .11 * c.pts.length;
+    arrivals.push({ pts: c.pts, exit: c.exit, start, end });
+    if (c.exit){ walls.add(c.exit.key); closed.set(c.exit.key, end); }
+    ui();
+    caption('第 ' + n + ' 个人的梦：她在前面跑，他在后面追……');
+    const btn = document.getElementById('arrive');
+    btn.disabled = true; clearTimeout(timer);
+    timer = setTimeout(() => {
+      btn.disabled = false;
+      caption(c.exit ? '她在这里不见了。他醒来以后，把这个口子砌死了。' : '没有出口了，她在一条死胡同里不见了。');
+      st.redraw();
+    }, reduce ? 0 : (end - start) * 1000 + 300);
+    st.redraw();
+  }
+
+  function reset(){
+    clearTimeout(timer); carve(); closed = new Map(); arrivals = [];
+    document.getElementById('arrive').disabled = false;
+    caption('建城那一夜之前'); ui(); st.redraw();
+  }
+
+  carve(); closed = new Map(); arrivals = [];
+  const st = SC.stage(document.getElementById('c'), W, H, draw);
+  caption('建城那一夜之前'); ui();
+  document.getElementById('arrive').addEventListener('click', arrive);
+  document.getElementById('reset').addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>

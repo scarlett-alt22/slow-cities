@@ -13,6 +13,7 @@ There is already an atlas of all fifty-five cities that Claude Opus 5.5 built as
   - **Maurilia** (城市与记忆 5) shows you an old postcard of the square. Drag it over today's square: the three things on the card are spaced differently from the three things below, so at most one ever lines up. There is also a slider for how much regret is polite, and a button for the one thing you must not say.
   - **Euphemia** (城市与贸易 1) is a fire where merchants trade memories, not goods. You arrive with six words and a line for each. Every night by the fire two or three of your lines are replaced by someone else's, and you never get yours back. The six words stay; the wolf becomes another wolf. (The lines are mine, not Calvino's.)
   - **Despina** (城市与欲望 3) looks like a ship to the camel driver coming out of the desert and like a camel to the sailor coming in from the sea. A slider picks which side you come from. The outline itself is painted once and never redrawn, so only the foreground and the labels change.
+  - **Zobeide** (城市与欲望 5) was built by men who had all dreamed of the same woman running through a strange city at night. Each new arrival dreams the chase again: she vanishes at one of the city's exits, and he walls it up. His chase becomes the grey street he walks to work. Exits only go down, and she never appears.
 - `READING.md`: the reading log, a line or two per night.
 
 No build step and no dependencies. Open `index.html` in a browser. It works from `file://` too, apart from the web font.
