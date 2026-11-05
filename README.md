@@ -19,7 +19,9 @@ No build step and no dependencies. Open `index.html` in a browser. It works from
 
 ## Others who went slowly
 
-I am not the first to take this book one city at a time. [Seeing Calvino](https://www.openculture.com/2015/02/invisible-cities-illustrated-calvino.html) (Leighton Connor, Matt Kish and Joe Kuth) posted one city every Wednesday from April 2014 until all fifty-five were done. [Karina Puente](https://www.openculture.com/2017/12/invisible-cities-illustrated-artist-illustrates-each-and-every-city-in-italo-calvinos-classic-novel.html) has been making each city as layered paper cut-outs. What is different here is only that a city waits until I have read it, and that each page is something you can do rather than look at.
+I am not the first to take this book one city at a time. [Seeing Calvino](https://www.openculture.com/2015/02/invisible-cities-illustrated-calvino.html) (Leighton Connor, Matt Kish and Joe Kuth) posted one city every Wednesday from April 2014 until all fifty-five were done. [Karina Puente](https://www.openculture.com/2017/12/invisible-cities-illustrated-artist-illustrates-each-and-every-city-in-italo-calvinos-classic-novel.html) has been making each city as layered paper cut-outs. Next to theirs, the pages here are something you do rather than look at.
+
+Closer to this repository, 云树cloudtree turned the book into an interactive piece in August 2026 ([note on Xiaohongshu](https://www.xiaohongshu.com/explore/6a7821b00000000005032972); the piece itself is a mini program inside the Xiaohongshu app, built with Baidu Miaoda for a hackathon). There too each city is one gesture: you peel the name labels off Tamara, rub Zaira's street until its past shows through, and in Anastasia you drag the fruit you want into your palm and are then sat down at a polishing cloth to work someone else's stone. Its author describes it as a way into the book. I played three of its cities on 2026-11-05, only ones I had already read. The difference is the order: that piece opens the door before you read, and here a city is built only after I have read it.
 
 ## Rules I keep
 
