@@ -17,7 +17,7 @@ Times are Asia/Shanghai. "Built" means the city has a page in `cities/`.
 | 2026-11-04 07:29 | 轻盈的城市 1 / 一（结尾） | 伊萨乌拉 Isaura | | A city of a thousand wells; everything in it moves upward. Then: "you will be one of the symbols yourself." |
 | 2026-11-04 21:10 | 二 / 城市与记忆 5 | 莫里里亚 Maurilia | 2026-11-05 | The old postcards are not of this city; they show another one that happened to have the same name. |
 | 2026-11-04 22:57 | 城市与欲望 4 | 菲朵拉 Fedora | 2026-11-05 | A museum of glass globes, each holding the city someone once meant to build. Both the stone city and the toys are imagined. |
-| 2026-11-04 22:57 | 城市与符号 3 | 佐艾 Zoe | | Every building could be anything, so nothing can be told apart, not even the city from what lies outside it. |
+| 2026-11-04 22:57 | 城市与符号 3 | 佐艾 Zoe | 2026-11-05 | Every building could be anything, so nothing can be told apart, not even the city from what lies outside it. |
 | 2026-11-04 23:49 | 轻盈的城市 2 | 珍诺比亚 Zenobia | | Ask anyone there to describe a happy city and it is always stilts and hanging ladders, plus a few flags. |
 | 2026-11-04 23:49 | 城市与贸易 1 / 二（结尾） | 欧菲米亚 Euphemia | 2026-11-05 | Merchants come at the solstices not to trade goods, which are the same everywhere, but to trade memories by the fire. |
 | 2026-11-05 03:14 | 三 / 城市与欲望 5 | 佐贝伊德 Zobeide | 2026-11-05 | Men who dreamed of the same woman built the city as a trap for her. She never came, and the streets became the way to work. |

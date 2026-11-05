@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>佐艾 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>.stage canvas{cursor:pointer}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与符号 · 之三 · 读到的第 13 座</p>
+    <h1>佐艾</h1>
+    <p class="lede">走进佐艾的旅人，认不出哪一座房子是做什么的。王宫、监狱、学校、妓院，长得都一样；你说这一间是什么，它就可以是什么，别的房子也可以。在下面的城里点一座房子（或者按按钮让我随便指一座），给它一个用途，看看会发生什么。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="佐艾：一圈城墙，墙里墙外是一模一样的小房子"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="ask" type="button">随便指一座，问它是做什么的</button>
+    <button id="reset" type="button">回到刚进城的时候</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-04 22:57（心跳夜读），做于 2026-11-05 夜里。墙里墙外的房子是同一个形状画出来的，一个像素都不差。你每给一座房子一个用途，至少另外两座也会得到同一个用途，其中至少一座在墙的另一边，所以「只属于一座房子的用途」永远是 0。房子下面的小点是它已经「可以是」的用途个数。城墙每贴一次淡一点，贴到第十次就没了。用途的名单是我拟的。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./fedora.html">← 菲朵拉</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, WX = 800, WY = 560, RX = 520, RY = 300, FADE = 10;
+  const USES = ['王宫', '监狱', '学校', '妓院', '市场', '神庙', '浴场', '作坊', '兵营', '医院', '剧场', '粮仓', '钱庄', '旅店'];
+  const C = SC.palette();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => reduce ? 1e9 : performance.now() / 1000;
+
+  const MORALS = [
+    '刚进城。墙里的房子和墙外的房子，长得一模一样。',
+    '你说这一间是那个。可我指给你看：另外还有两座，说它们是那个也说得通，有一座还在墙外。',
+    '贴得越多，每一座房子能是的东西就越多。没有一样东西只属于一座房子。',
+    '旅人开始怀疑：一座房子要是什么都可以是，那它还是什么？',
+    '城墙越来越淡。墙外的房子也被叫成了王宫、学校、神庙，跟墙里的没有两样。'
+  ];
+  const DONE = '城墙没了。旅人站在原地想：既然分不出墙里墙外，这座城当初为什么要存在？是什么把里面和外面隔开的？';
+
+  // The houses: one shape, placed inside and outside the wall.
+  const houses = [];
+  (function place(){
+    const rand = SC.rng(1104);
+    // A house is drawn from its base up to its roof, so test both ends: none may sit on the wall.
+    const at = (x, y) => ((x - WX) / RX) ** 2 + ((y - WY) / RY) ** 2;
+    const deepIn = (x, y) => Math.max(at(x, y + 18), at(x, y - 70)), farOut = (x, y) => Math.min(at(x, y + 18), at(x, y - 70));
+    const ok = (x, y) => houses.every(h => Math.hypot(h.x - x, h.y - y) > 112);
+    let tries = 0;
+    while (houses.filter(h => h.in).length < 18 && tries++ < 4000){
+      const x = WX + (rand() * 2 - 1) * RX * .86, y = WY + (rand() * 2 - 1) * RY * .8;
+      if (deepIn(x, y) < .85 && ok(x, y)) houses.push({ x, y, in: true });
+    }
+    tries = 0;
+    while (houses.filter(h => !h.in).length < 10 && tries++ < 4000){
+      const x = 90 + rand() * (W - 180), y = 130 + rand() * (H - 200);
+      if (farOut(x, y) > 1.3 && ok(x, y)) houses.push({ x, y, in: false });
+    }
+  })();
+
+  let uses, labels, flash, asked, order, timer = 0;
+
+  function house(ctx, x, y, s, color){
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    ctx.fillStyle = C.rule; ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(-30, -38); ctx.lineTo(0, -62); ctx.lineTo(30, -38); ctx.lineTo(30, 0); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.rect(-8, -22, 16, 22); ctx.stroke();
+    ctx.restore();
+  }
+
+  function draw(ctx){
+    const now = clock();
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    // The wall, fading a little with every label.
+    const wall = Math.max(0, 1 - asked / FADE);
+    if (wall > 0){
+      ctx.strokeStyle = C.chalk; ctx.lineWidth = 7; ctx.globalAlpha = .8 * wall;
+      ctx.beginPath(); ctx.ellipse(WX, WY, RX, RY, 0, 0, 6.29); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+
+    // Lines from the house you named to the others that could be the same thing.
+    if (flash){
+      const k = Math.max(0, 1 - (now - flash.at) / 4);
+      if (k > 0){
+        ctx.strokeStyle = C.lamp; ctx.lineWidth = 2.5; ctx.setLineDash([8, 8]); ctx.globalAlpha = k;
+        const a = houses[flash.i];
+        for (const j of flash.also){ const b = houses[j]; ctx.beginPath(); ctx.moveTo(a.x, a.y - 30); ctx.lineTo(b.x, b.y - 30); ctx.stroke(); }
+        ctx.setLineDash([]); ctx.globalAlpha = 1;
+      }
+    }
+
+    houses.forEach((h, i) => {
+      const lit = flash && (flash.i === i || flash.also.includes(i)) && now - flash.at < 4;
+      house(ctx, h.x, h.y, 1, lit ? C.lamp : C.dim);
+      const n = uses[i].size;
+      ctx.fillStyle = C.lamp;
+      for (let d = 0; d < Math.min(n, 9); d++){ ctx.beginPath(); ctx.arc(h.x - (Math.min(n, 9) - 1) * 6 + d * 12, h.y + 14, 3.5, 0, 6.29); ctx.fill(); }
+    });
+
+    if (flash && now - flash.at < 4){
+      const k = Math.max(0, 1 - Math.max(0, now - flash.at - 2.5) / 1.5);
+      ctx.font = '700 30px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.globalAlpha = k;
+      for (const j of [flash.i].concat(flash.also)){
+        const h = houses[j]; ctx.fillStyle = j === flash.i ? C.ink : C.lamp;
+        ctx.fillText(flash.use + (j === flash.i ? '' : '？'), h.x, h.y - 70);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Name house i. The same use also goes to two other houses, at least one on the
+  // other side of the wall, chosen by the count so far: so no use ever belongs to one house only.
+  function name(i){
+    const use = USES[asked % USES.length];
+    const rand = SC.rng(asked * 613 + 7);
+    const other = houses.map((h, j) => j).filter(j => j !== i && houses[j].in !== houses[i].in);
+    const same = houses.map((h, j) => j).filter(j => j !== i && houses[j].in === houses[i].in);
+    const a = other[Math.floor(rand() * other.length)];
+    const pool = same.concat(other.filter(j => j !== a));
+    const b = pool[Math.floor(rand() * pool.length)];
+    const before = [...uses[i]];
+    for (const j of [i, a, b]) uses[j].add(use);
+    asked += 1;
+    flash = { i, also: [a, b], use, at: clock() };
+    const was = before.filter(u => u !== use);
+    caption('你说这座是' + use + '。' + (was.length ? '可它也可以是' + was.slice(-3).join('、') + '。' : '') + '另外两座也可以是' + use + '，有一座在墙' + (houses[i].in ? '外' : '里') + '。');
+    ui(); st.redraw();
+    clearTimeout(timer); timer = setTimeout(() => st.redraw(), reduce ? 0 : 4100);
+  }
+
+  function uniqueUses(){
+    const owners = new Map();
+    uses.forEach(s => s.forEach(u => owners.set(u, (owners.get(u) || 0) + 1)));
+    return [...owners.values()].filter(n => n === 1).length;
+  }
+
+  function ui(){
+    document.getElementById('meter').textContent = '贴过 ' + asked + ' 次 · 只属于一座房子的用途 ' + uniqueUses() + ' 个 · 城墙还剩 ' + Math.round(Math.max(0, 1 - asked / FADE) * 100) + '%';
+    document.getElementById('moral').textContent = asked >= FADE ? DONE : MORALS[Math.min(asked, MORALS.length - 1)];
+  }
+
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  function reset(){
+    clearTimeout(timer);
+    uses = houses.map(() => new Set()); asked = 0; flash = null;
+    const rand = SC.rng(33); order = houses.map((h, i) => i).sort(() => rand() - .5);
+    caption('刚进城的时候'); ui(); st.redraw();
+  }
+
+  const canvas = document.getElementById('c');
+  canvas.addEventListener('click', e => {
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+    let best = -1, bd = 70;
+    houses.forEach((h, i) => { const d = Math.hypot(h.x - x, h.y - 30 - y); if (d < bd){ bd = d; best = i; } });
+    if (best >= 0) name(best);
+  });
+
+  uses = houses.map(() => new Set()); asked = 0; flash = null;
+  const st = SC.stage(canvas, W, H, draw);
+  reset();
+  document.getElementById('ask').addEventListener('click', () => name(order[asked % order.length]));
+  document.getElementById('reset').addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>
