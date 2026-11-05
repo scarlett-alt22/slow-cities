@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>菲朵拉 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>.stage canvas{touch-action:none;cursor:crosshair}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与欲望 · 之四 · 读到的第 12 座</p>
+    <h1>菲朵拉</h1>
+    <p class="lede">菲朵拉城中心有一座金属的宫殿，每个房间里都放着一只玻璃球，球里是另一座菲朵拉的模型。每个时代都有人看着当时的菲朵拉，想出怎样把它改成理想的城市；可等他的小模型做好，菲朵拉已经变了样，昨天还可能实现的那个未来，成了玻璃球里的玩具。在下面的城里点一点、拖一拖，画出你想要的菲朵拉（不画也行，就照今天的样子），然后把它封进玻璃球。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="菲朵拉：下面是一排石头房子，上面是博物馆的架子，摆着玻璃球"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="seal" type="button">做成模型，封进玻璃球</button>
+    <button id="reset" type="button">回到还没有博物馆的时候</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-04 22:57（心跳夜读），做于 2026-11-05 晚上。灰色的是石头的菲朵拉，橙色虚线是你心里的那座。按下按钮以后，模型要花一点时间才做得完；做的这段时间里，石头城会自己变掉几栋房子，所以球里的那座永远比城晚一步。我没有让城去迁就你画的样子，也没有故意跟你对着改：它变的那几栋，跟你画了什么无关。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./zobeide.html">← 佐贝伊德</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, N = 16, X0 = 120, CW = 85, GROUND = 930, HMIN = 70, HMAX = 470;
+  const SHELF = 8, GY = 190, GR = 74;
+  const C = SC.palette();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => reduce ? 1e9 : performance.now() / 1000;
+  const BUILD = 2.2;
+
+  const MORALS = [
+    '这是还没有博物馆的菲朵拉。橙色虚线是你心里的那一座，现在它跟石头城一模一样。',
+    '模型做好了，可就在做模型的这段时间里，城已经变了几栋房子。球里的那座，从放上架子那天起就回不去了。',
+    '又一个时代，又一个人。他照着当时的城画了理想的样子，等球封好，城又不是那个样子了。',
+    '宫殿里的房间越来越多，每一间都住着一座没有造成的菲朵拉。来参观的人挑一只最合心意的球，对着它想：要是当初……',
+    '石头城也只是其中一个样子。它被当成必然，是因为它已经造出来了；可在它造出来以前，它也只是许多可能里的一个。'
+  ];
+  const DONE = '大的菲朵拉和球里的小菲朵拉，地图上都得画进去。不是因为它们一样真，是因为它们都只是假设：一个是被当成必然的、其实还不是；另一些是被当成可能的、转眼就不再可能。';
+
+  let city, sketch, globes, era, anim, timer = 0;
+
+  function bx(i){ return X0 + i * CW; }
+
+  function founding(){
+    const rand = SC.rng(1972), h = [];
+    for (let i = 0; i < N; i++) h.push(Math.round(HMIN + rand() * (HMAX - HMIN) * (.35 + .65 * Math.sin(Math.PI * (i + .5) / N))));
+    return h;
+  }
+
+  // What the city does on its own while a model is being made. Seeded by the era only,
+  // so it never looks at the sketch: it neither follows the dream nor runs away from it.
+  function drift(h, e){
+    const rand = SC.rng(e * 977 + 31), out = h.slice();
+    const k = 3 + Math.floor(rand() * 3), done = new Set();
+    while (done.size < k){
+      const i = Math.floor(rand() * N); if (done.has(i)) continue; done.add(i);
+      let v = Math.round(HMIN + rand() * (HMAX - HMIN));
+      if (Math.abs(v - out[i]) < 60) v = out[i] > (HMIN + HMAX) / 2 ? out[i] - 120 : out[i] + 120;
+      out[i] = Math.max(HMIN, Math.min(HMAX, v));
+    }
+    return out;
+  }
+
+  function diff(a, b){ let n = 0; for (let i = 0; i < N; i++) if (Math.abs(a[i] - b[i]) > 4) n++; return n; }
+
+  function shownCity(now){
+    if (!anim) return city;
+    const f = Math.max(0, Math.min(1, (now - anim.start) / BUILD)), u = f * f * (3 - 2 * f);
+    return anim.from.map((v, i) => v + (anim.to[i] - v) * u);
+  }
+
+  function globeAt(slot){ return [X0 + 40 + slot * ((N * CW - 80) / (SHELF - 1)), GY]; }
+
+  function skyline(ctx, h, x, y, s){
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) ctx.rect(x + i * CW * s + 2 * s, y - h[i] * s, (CW - 4) * s, h[i] * s);
+  }
+
+  function drawGlobe(ctx, g, cx, cy, r, alpha){
+    ctx.save(); ctx.globalAlpha = alpha;
+    const s = (r * 1.5) / (N * CW), mx = cx - N * CW * s / 2, my = cy + r * .45;
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.29); ctx.clip();
+    const shine = ctx.createRadialGradient(cx - r * .35, cy - r * .4, 2, cx, cy, r);
+    shine.addColorStop(0, 'rgba(201,221,228,.22)'); shine.addColorStop(1, 'rgba(201,221,228,.03)');
+    ctx.fillStyle = shine; ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+    ctx.fillStyle = C.lamp; ctx.globalAlpha = alpha * .85; skyline(ctx, g.h, mx, my, s); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.29); ctx.stroke();
+    ctx.fillStyle = C.rule; ctx.fillRect(cx - r * .55, cy + r * .92, r * 1.1, 16);
+    ctx.fillStyle = C.dim; ctx.font = '400 22px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText('第 ' + g.n + ' 只', cx, cy + r + 24);
+    ctx.restore();
+  }
+
+  function draw(ctx){
+    const now = clock();
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    // The metal palace: a shelf, and a glass globe for every model ever made.
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(X0 - 40, GY + GR + 16); ctx.lineTo(X0 + N * CW + 40, GY + GR + 16); ctx.stroke();
+    const shelf = globes.slice(-SHELF), first = globes.length - shelf.length;
+    shelf.forEach((gl, k) => {
+      const [cx, cy] = globeAt(k);
+      let x = cx, y = cy, r = GR, a = 1;
+      if (anim && gl === anim.globe){
+        const f = Math.max(0, Math.min(1, (now - anim.start) / BUILD)), u = f * f * (3 - 2 * f);
+        x = 800 + (cx - 800) * u; y = 640 + (cy - 640) * u; r = 260 + (GR - 260) * u; a = .4 + .6 * u;
+      }
+      drawGlobe(ctx, gl, x, y, r, a);
+    });
+    if (first > 0){
+      ctx.fillStyle = C.dim; ctx.font = '400 22px ' + C.display; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText('还有 ' + first + ' 只在别的房间', X0 - 40, 48);
+    }
+
+    const h = shownCity(now);
+    if (!globes.length){
+      SC.annotate(ctx, [
+        { at: [bx(2) + CW / 2, GROUND - h[2] - 6], text: '石头的菲朵拉', lx: bx(2) + CW / 2, ly: GROUND - h[2] - 110 },
+        { at: [bx(12) + CW / 2, GROUND - sketch[12] - 10], text: '你心里的菲朵拉', lx: bx(12) + CW / 2, ly: GROUND - Math.max(sketch[12], h[12]) - 120 }
+      ], { size: 26, color: C.dim });
+    }
+
+    // The stone city.
+    ctx.fillStyle = C.rule; skyline(ctx, h, X0, GROUND, 1); ctx.fill();
+    ctx.strokeStyle = C.dim; ctx.lineWidth = 2; skyline(ctx, h, X0, GROUND, 1); ctx.stroke();
+    const rand = SC.rng(7);
+    ctx.fillStyle = C.lamp;
+    for (let i = 0; i < N; i++) for (let y = GROUND - 30; y > GROUND - h[i] + 16; y -= 34){
+      const lit = rand() < .22; if (!lit) continue;
+      ctx.globalAlpha = .5; ctx.fillRect(bx(i) + 18 + Math.floor(rand() * 3) * 18, y - 12, 9, 13);
+    }
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(X0 - 40, GROUND); ctx.lineTo(X0 + N * CW + 40, GROUND); ctx.stroke();
+
+    // The city someone wants it to be.
+    if (!anim){
+      ctx.setLineDash([10, 9]); ctx.strokeStyle = C.lamp; ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let i = 0; i < N; i++){ const y = GROUND - sketch[i]; if (i === 0) ctx.moveTo(bx(i), y); else ctx.lineTo(bx(i), y); ctx.lineTo(bx(i + 1), y); }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+
+  function ui(){
+    const n = globes.length;
+    document.getElementById('meter').textContent = '玻璃球 ' + n + ' 只 · 石头城换过 ' + era + ' 个样子 · 跟城一样的球 ' + globes.filter(g => diff(g.h, city) === 0).length + ' 只';
+    document.getElementById('moral').textContent = n >= 6 ? DONE : MORALS[Math.min(n, MORALS.length - 1)];
+  }
+
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  function seal(){
+    if (anim) return;
+    const from = city.slice(), to = drift(city, era + 1);
+    const gl = { n: globes.length + 1, h: sketch.slice() };
+    globes.push(gl); era += 1; city = to;
+    const changed = diff(from, to);
+    anim = reduce ? null : { start: clock(), from, to, globe: gl };
+    const btn = document.getElementById('seal'); btn.disabled = true;
+    caption('正在做第 ' + gl.n + ' 只模型……');
+    ui();
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      anim = null; btn.disabled = false; sketch = city.slice();
+      caption('模型做好了。这期间城里有 ' + changed + ' 栋房子变了样，球里那座已经对不上了。');
+      ui(); st.redraw();
+    }, reduce ? 0 : BUILD * 1000 + 200);
+    st.redraw();
+  }
+
+  function reset(){
+    clearTimeout(timer); anim = null;
+    city = founding(); sketch = city.slice(); globes = []; era = 0;
+    document.getElementById('seal').disabled = false;
+    caption('还没有博物馆的时候'); ui(); st.redraw();
+  }
+
+  // Drawing the sketch: tap or drag over the city to set how tall each building should be.
+  const canvas = document.getElementById('c');
+  let drawing = false;
+  function paint(e){
+    if (anim) return;
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+    const i = Math.floor((x - X0) / CW);
+    if (i < 0 || i >= N || y < GY + GR + 30) return;
+    sketch[i] = Math.round(Math.max(HMIN, Math.min(HMAX, GROUND - y)));
+    caption(diff(sketch, city) ? '你改了 ' + diff(sketch, city) + ' 栋。' : '跟今天的城一模一样。');
+    st.redraw();
+  }
+  canvas.addEventListener('pointerdown', e => { drawing = true; if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId); paint(e); });
+  canvas.addEventListener('pointermove', e => { if (drawing) paint(e); });
+  canvas.addEventListener('pointerup', () => { drawing = false; });
+  canvas.addEventListener('pointercancel', () => { drawing = false; });
+
+  city = founding(); sketch = city.slice(); globes = []; era = 0; anim = null;
+  const st = SC.stage(canvas, W, H, draw);
+  caption('还没有博物馆的时候'); ui();
+  document.getElementById('seal').addEventListener('click', seal);
+  document.getElementById('reset').addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>
