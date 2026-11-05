@@ -21,3 +21,5 @@ Times are Asia/Shanghai. "Built" means the city has a page in `cities/`.
 | 2026-11-04 23:49 | 轻盈的城市 2 | 珍诺比亚 Zenobia | | Ask anyone there to describe a happy city and it is always stilts and hanging ladders, plus a few flags. |
 | 2026-11-04 23:49 | 城市与贸易 1 / 二（结尾） | 欧菲米亚 Euphemia | 2026-11-05 | Merchants come at the solstices not to trade goods, which are the same everywhere, but to trade memories by the fire. |
 | 2026-11-05 03:14 | 三 / 城市与欲望 5 | 佐贝伊德 Zobeide | 2026-11-05 | Men who dreamed of the same woman built the city as a trap for her. She never came, and the streets became the way to work. |
+| 2026-11-05 21:29 | 城市与符号 4 | 伊帕奇亚 Ipazia | | Every sign points somewhere else: the riders are in the stables, the musicians in the tombs. To leave, climb the tower, not the harbour; no language is safe from lying. |
+| 2026-11-05 21:29 | 轻盈的城市 3 | 阿尔米拉 Armilla | | No walls, no roofs, only the pipes, each ending in a tap or a shower. Water nymphs moved in and bathe there every morning. |
