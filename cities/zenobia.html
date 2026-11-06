@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>珍诺比亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">轻盈的城市 · 之二 · 读到的第 14 座</p>
+    <h1>珍诺比亚</h1>
+    <p class="lede">珍诺比亚明明建在干地上，却整座架在高高的木桩上：竹子和铁皮的房子，一层层平台，吊梯和悬空的走道，顶上是尖顶的瞭望台、水桶、风向标、滑轮、钓竿和吊车。当初是什么需要、什么命令让人这样建，已经没人记得。可是你去问这里的人，幸福的城是什么样子，他们说出来的总是一座珍诺比亚。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="珍诺比亚：架在木桩上的一层层平台和竹屋，吊梯从上面垂到地面，问过的人说的城用虚线画在最上面"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="ask" type="button">问一个住在这儿的人</button>
+    <button id="reset" type="button">回到谁都还没问过的时候</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-04 23:49（心跳夜读），做于 2026-11-06 傍晚。每个人说的城，都是同一段程序换一个种子搭出来的；这段程序只会用最初那一层里有的零件，唯一多出来的是彩带——书里就是这么说的。下一个人开口的时候，上一个人说的那座就搭到城上去了：这一步是我的读法，书里只说城是一层层叠出来的，最初的设计已经认不出来。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./armilla.html">← 阿尔米拉</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, GROUND = 930, RISE = 1.6;
+  const EXTRAS = ['barrel', 'vane', 'belvedere', 'pulley', 'crane', 'pole'];
+  const NAMES = { deck: '层平台', house: '座竹子和铁皮的房子', ladder: '架吊梯', barrel: '只水桶', vane: '个风向标',
+                  belvedere: '座尖顶瞭望台', pulley: '个滑轮', crane: '架吊车', pole: '根钓竿' };
+  const C = SC.palette();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => performance.now() / 1000;
+
+  const MORALS = [
+    '谁也不记得当初为什么要把城架在桩上。去问问住在这儿的人：在他们看来，幸福的城是什么样子？',
+    '他说的城也许跟眼前这座很不一样，到处挂着彩带；可拆开看，零件全是这座城自己的。',
+    '下一个人开口的时候，上一个人说的那座已经搭在城上了。珍诺比亚就是这样一层压一层长起来的。',
+    '最底下那一层越来越难认了。它不是被拆掉的，是被后来的愿望一层层盖住、穿过去的。',
+    '每个人想要的都不一样，用的却总是同一套零件。',
+    '城又高了一层。下面那些桩，现在看起来也只是许多桩里的几根。'
+  ];
+  const DONE = '问珍诺比亚算幸福的城还是不幸的城，没有意义。城不该这样分，该分成另外两种：一种是许多年、许多变化之后，欲望还一直在给它形状；另一种是欲望把城抹掉了，或者城把欲望抹掉了。';
+
+  let layers, dream, asked, anim;
+
+  // The highest deck under [x0, x1], or the ground.
+  function surface(x0, x1, groups){
+    let y = GROUND;
+    for (const g of groups) for (const p of g) if (p.type === 'deck' && p.x < x1 && p.x + p.w > x0) y = Math.min(y, p.y);
+    return y;
+  }
+
+  // One layer of stilts. The founders and every later dreamer use this same builder,
+  // so a dream can only be made of the parts the first Zenobia already had (plus ribbons).
+  function build(rand, below, ribbons){
+    const parts = [], nd = 2 + Math.floor(rand() * 2);
+    for (let d = 0; d < nd; d++){
+      const w = 240 + Math.round(rand() * 200), x = 150 + Math.round(rand() * (1300 - w));
+      // Each deck stands on what was there before this layer, so one dream adds one storey, not three.
+      const y = surface(x, x + w, below) - 130 - Math.round(rand() * 60);
+      for (const px of [x + 12, x + w / 2, x + w - 12]) parts.push({ type: 'pile', x: px, y0: y, y1: surface(px - 2, px + 2, below) });
+      const lx = x + 40 + Math.round(rand() * (w - 80));
+      parts.push({ type: 'ladder', x: lx, y0: y, y1: rand() < .5 ? GROUND : surface(lx - 10, lx + 10, below) });
+      parts.push({ type: 'deck', x, w, y });
+      let cx = x + 18;
+      while (cx < x + w - 46){
+        if (rand() < .4){
+          const hw = 80 + Math.round(rand() * 50); if (cx + hw > x + w - 8) break;
+          parts.push({ type: 'house', x: cx, y, w: hw, h: 58 + Math.round(rand() * 34) }); cx += hw + 14;
+        } else {
+          parts.push({ type: EXTRAS[Math.floor(rand() * EXTRAS.length)], x: cx + 20, y, h: 50 + Math.round(rand() * 50) }); cx += 56;
+        }
+      }
+    }
+    if (ribbons){
+      for (const p of parts.slice()) if (/house|vane|pole|belvedere/.test(p.type) && rand() < .7){
+        const [tx, ty] = top(p); parts.push({ type: 'ribbon', x: tx, y: ty, len: 60 + Math.round(rand() * 70), hue: Math.round(rand() * 360) });
+      }
+      if (!parts.some(p => p.type === 'ribbon')){ const [tx, ty] = top(parts.find(p => p.type === 'deck')); parts.push({ type: 'ribbon', x: tx, y: ty, len: 90, hue: 40 }); }
+    }
+    return parts;
+  }
+
+  function top(p){
+    switch (p.type){
+      case 'house': return [p.x + p.w / 2, p.y - p.h - 24];
+      case 'deck': return [p.x + p.w / 2, p.y];
+      case 'pole': return [p.x + 40, p.y - p.h];
+      case 'belvedere': return [p.x, p.y - p.h - 30];
+      default: return [p.x, p.y - p.h];
+    }
+  }
+
+  function box(p){
+    switch (p.type){
+      case 'deck': return [p.x, p.y - 2, p.x + p.w, p.y + 10];
+      case 'pile': return [p.x - 3, p.y0, p.x + 3, p.y1];
+      case 'ladder': return [p.x - 10, p.y0, p.x + 10, p.y1];
+      case 'house': return [p.x, p.y - p.h - 24, p.x + p.w, p.y];
+      case 'barrel': return [p.x - 20, p.y - 56, p.x + 20, p.y];
+      case 'vane': return [p.x - 18, p.y - p.h - 10, p.x + 18, p.y];
+      case 'belvedere': return [p.x - 22, p.y - p.h - 30, p.x + 22, p.y];
+      case 'pulley': return [p.x - 14, p.y - p.h - 14, p.x + 30, p.y + 70];
+      case 'crane': return [p.x - 6, p.y - p.h - 6, p.x + 56, p.y];
+      case 'pole': return [p.x - 4, p.y - p.h, p.x + 44, p.y];
+      default: return null;
+    }
+  }
+
+  // The founders: the first seed from 1972 up whose layers hold every kind of part.
+  function founding(){
+    for (let s = 1972; ; s++){
+      const rand = SC.rng(s), a = build(rand, [], false), b = build(rand, [a], false), c = build(rand, [a, b], false);
+      const types = new Set(a.concat(b, c).map(p => p.type));
+      if (['house'].concat(EXTRAS).every(t => types.has(t))) return [a.concat(b, c)];
+    }
+  }
+
+  // How many things of the first layer something later now runs through or stands in front of.
+  function hidden(){
+    const first = layers[0].filter(p => p.type !== 'deck' && p.type !== 'pile' && p.type !== 'ladder');
+    const later = [].concat(...layers.slice(1)).map(box).filter(Boolean);
+    const n = first.filter(p => { const a = box(p); return later.some(b => a[0] + 3 < b[2] && b[0] + 3 < a[2] && a[1] + 3 < b[3] && b[1] + 3 < a[3]); }).length;
+    return [n, first.length];
+  }
+
+  function say(parts){
+    const c = {}; parts.forEach(p => { c[p.type] = (c[p.type] || 0) + 1; });
+    const bits = ['deck', 'house', 'ladder'].concat(EXTRAS).filter(t => c[t]).map(t => c[t] + ' ' + NAMES[t]);
+    return '第 ' + asked + ' 个人说，幸福的城要有 ' + bits.join('、') + '，再挂上 ' + c.ribbon + ' 条彩带。';
+  }
+
+  function highest(){
+    let y = GROUND;
+    for (const g of layers.concat(dream ? [dream] : [])) for (const p of g){ const b = box(p) || [0, p.y - p.len * .4]; y = Math.min(y, b[1]); }
+    return y;
+  }
+  const fit = top => Math.min(1, (GROUND - 70) / (GROUND - top));
+
+  function part(ctx, p, now){
+    const b = box(p);
+    switch (p.type){
+      case 'pile': ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(p.x, p.y0); ctx.lineTo(p.x, p.y1); ctx.stroke(); break;
+      case 'ladder':
+        ctx.lineWidth = 2; ctx.beginPath();
+        ctx.moveTo(p.x - 8, p.y0); ctx.lineTo(p.x - 8, p.y1); ctx.moveTo(p.x + 8, p.y0); ctx.lineTo(p.x + 8, p.y1);
+        for (let y = p.y0 + 14; y < p.y1; y += 18){ ctx.moveTo(p.x - 8, y); ctx.lineTo(p.x + 8, y); }
+        ctx.stroke(); break;
+      case 'deck': ctx.fillRect(p.x, p.y, p.w, 9); ctx.lineWidth = 2; ctx.strokeRect(p.x, p.y, p.w, 9); break;
+      case 'house':
+        ctx.fillRect(p.x, p.y - p.h, p.w, p.h); ctx.lineWidth = 2; ctx.strokeRect(p.x, p.y - p.h, p.w, p.h);
+        ctx.beginPath(); ctx.moveTo(p.x - 6, p.y - p.h); ctx.lineTo(p.x + p.w / 2, p.y - p.h - 24); ctx.lineTo(p.x + p.w + 6, p.y - p.h); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); for (let x = p.x + 10; x < p.x + p.w - 4; x += 12){ ctx.moveTo(x, p.y - p.h + 4); ctx.lineTo(x, p.y - 4); } ctx.lineWidth = 1; ctx.stroke(); break;
+      case 'barrel':
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x - 14, p.y); ctx.lineTo(p.x - 12, p.y - 18); ctx.moveTo(p.x + 14, p.y); ctx.lineTo(p.x + 12, p.y - 18); ctx.stroke();
+        ctx.fillRect(p.x - 19, p.y - 56, 38, 38); ctx.strokeRect(p.x - 19, p.y - 56, 38, 38); break;
+      case 'vane':
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y - p.h);
+        { const a = Math.sin(now * .7 + p.x) * .5; ctx.moveTo(p.x - 17 * Math.cos(a), p.y - p.h - 17 * Math.sin(a)); ctx.lineTo(p.x + 17 * Math.cos(a), p.y - p.h + 17 * Math.sin(a)); }
+        ctx.stroke(); break;
+      case 'belvedere':
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x - 14, p.y); ctx.lineTo(p.x - 14, p.y - p.h); ctx.moveTo(p.x + 14, p.y); ctx.lineTo(p.x + 14, p.y - p.h); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p.x - 22, p.y - p.h); ctx.lineTo(p.x, p.y - p.h - 30); ctx.lineTo(p.x + 22, p.y - p.h); ctx.closePath(); ctx.fill(); ctx.stroke(); break;
+      case 'pulley':
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y - p.h); ctx.lineTo(p.x + 16, p.y - p.h); ctx.stroke();
+        ctx.beginPath(); ctx.arc(p.x + 16, p.y - p.h, 9, 0, 6.29); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p.x + 25, p.y - p.h); ctx.lineTo(p.x + 25, p.y + 62); ctx.lineWidth = 1; ctx.stroke(); break;
+      case 'crane':
+        ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y - p.h); ctx.lineTo(p.x + 54, p.y - p.h + 8); ctx.stroke();
+        ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p.x + 50, p.y - p.h + 8); ctx.lineTo(p.x + 50, p.y - p.h + 40); ctx.stroke(); break;
+      case 'pole':
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 40, p.y - p.h); ctx.lineWidth = 1; ctx.lineTo(p.x + 40, p.y - p.h + 46); ctx.stroke(); break;
+      case 'ribbon': {
+        ctx.save(); ctx.strokeStyle = 'hsl(' + p.hue + ',70%,66%)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(p.x, p.y);
+        for (let k = 1; k <= 8; k++) ctx.lineTo(p.x + p.len * k / 8, p.y + 6 * Math.sin(now * 3 + k * .9 + p.hue) + k * 2);
+        ctx.stroke(); ctx.restore(); break;
+      }
+    }
+    return b;
+  }
+
+  function draw(ctx){
+    const now = clock();
+    const f = anim ? Math.max(0, Math.min(1, (now - anim.start) / RISE)) : 1, u = f * f * (3 - 2 * f);
+    const s = anim ? anim.s0 + (anim.s1 - anim.s0) * u : fit(highest());
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.save(); ctx.translate(W / 2, GROUND); ctx.scale(s, s); ctx.translate(-W / 2, -GROUND);
+
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 2 / s;
+    ctx.beginPath(); ctx.moveTo(W / 2 - W / s, GROUND); ctx.lineTo(W / 2 + W / s, GROUND); ctx.stroke();
+
+    if (!asked){
+      const d = layers[0].find(p => p.type === 'deck');
+      SC.annotate(ctx, [{ at: [d.x + d.w / 2, d.y + 40], text: '最早的那一层：没人记得为什么要架在桩上', lx: 800, ly: 160 }], { size: 28, color: C.dim });
+    }
+
+    // Built layers in order, so each later one really stands in front of the ones before it.
+    layers.forEach((L, i) => {
+      ctx.fillStyle = C.rule; ctx.strokeStyle = (!asked && i === 0) ? C.chalk : C.dim; ctx.setLineDash([]);
+      L.forEach(p => part(ctx, p, now));
+    });
+
+    // The people: standing on the first layer's decks; the one who just spoke is lit.
+    layers[0].filter(p => p.type === 'deck').forEach((d, k) => {
+      SC.figure(ctx, asked && (asked - 1) % 3 === k ? C.lamp : C.ink, d.x + d.w - 34, d.y, 1.3, 0);
+    });
+
+    // What the last person described: dashed, rising into place.
+    if (dream){
+      // Clipped at the ground: while it rises, its hanging ladders must not poke through into the earth.
+      ctx.save(); ctx.beginPath(); ctx.rect(-4 * W, -50 * H, 9 * W, GROUND + 50 * H); ctx.clip();
+      ctx.globalAlpha = .25 + .75 * u; ctx.translate(0, (1 - u) * 90);
+      ctx.fillStyle = 'rgba(232,166,78,.12)'; ctx.strokeStyle = C.lamp; ctx.setLineDash([8, 6]);
+      dream.forEach(p => part(ctx, p, now));
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function ui(){
+    const [n, of] = hidden();
+    document.getElementById('meter').textContent = '问过 ' + asked + ' 个人 · 最早那一层的东西被后来的挡住或穿过 ' + n + ' / ' + of + ' 件';
+    document.getElementById('moral').textContent = asked >= 6 ? DONE : MORALS[Math.min(asked, MORALS.length - 1)];
+  }
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  function ask(){
+    const s0 = fit(highest());
+    if (dream) layers.push(dream);
+    asked += 1;
+    dream = build(SC.rng(101 + asked * 7919), layers, true);
+    anim = reduce ? null : { start: clock(), s0, s1: fit(highest()) };
+    caption(say(dream)); ui(); st.redraw();
+  }
+
+  function reset(){
+    layers = founding(); dream = null; asked = 0; anim = null;
+    caption('还没有人被问过。'); ui(); st.redraw();
+  }
+
+  layers = founding(); dream = null; asked = 0; anim = null;
+  const st = SC.stage(document.getElementById('c'), W, H, draw);
+  caption('还没有人被问过。'); ui();
+  document.getElementById('ask').addEventListener('click', ask);
+  document.getElementById('reset').addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>
