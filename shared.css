@@ -40,3 +40,9 @@ th{font-weight:400;font-size:12px;letter-spacing:.16em;color:var(--dim)}
 .read-on{font-size:13px;color:var(--dim);line-height:1.7;margin:0}
 nav.cities{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px;border-top:1px solid var(--rule);padding-top:16px}
 footer{font-size:12px;line-height:1.7;color:var(--dim);max-width:40em}
+/* On a phone the caption would cover the bottom third of the scene, so it moves under the canvas. */
+@media (max-width:600px){
+  .stage{aspect-ratio:auto}
+  .stage canvas{height:auto;aspect-ratio:16/10}
+  .caption{position:static;padding:8px 12px 10px;border-top:1px solid var(--rule);text-shadow:none;min-height:3.4em}
+}
