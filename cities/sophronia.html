@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>索伏洛尼亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>.stage canvas{touch-action:none;cursor:grab}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">轻盈的城市 · 之四 · 读到的第 22 座</p>
+    <h1>索伏洛尼亚</h1>
+    <p class="lede">索伏洛尼亚由两个半边城市组成。一边是游乐场：陡峭的过山车、旋转木马、摩天轮、马戏团的大圆顶帐篷。另一边是石头、大理石和水泥：银行、工厂、宫殿、屠宰场、学校。两个半边里，一个是永久的，一个是临时的；时限一到，临时的那一半就被拆下来，运走，搬到另一个半边城市的空地上去。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="索伏洛尼亚：左边是游乐场，过山车的轨道在后面起伏；右边是六座石头房子，下面路边停着一排拖车；右上角的小地图上有四块空地，车队绕着它们走"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="load" type="button">把一座石头房子装上车</button>
+    <button id="reset" type="button">回到车队刚卸完货的那天</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-06 19:06（心跳傍晚读），做于 2026-11-06 晚上。石头房子一抓就起、游乐设施拔不动，是我把书里的反转做成手感的办法。车队还要去另外三块空地，所以一年里大半时间不在这里：这是我的读法，书里只说它被运到「另一个半边城市的空地上」，没说有几座、要走多久。拖着房子放到下面的路上就装上了车；用不了鼠标就按上面的按钮。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./zenobia.html">← 珍诺比亚</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, GROUND = 820, ROAD = 900, DROP = 850;
+  const LEAVE = 3, BACK = 4, RATE = 12;                 // seconds; days per second while away
+  const LEG = 21, STAY = 70, AWAY = 4 * LEG + 3 * STAY;  // the caravan's year away from here: 294 days
+  const SPEED = .09;                                     // laps of the roller coaster per second
+  const C = SC.palette();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => performance.now() / 1000;
+
+  const STONE = [
+    { kind: 'bank', name: '银行', h: 200 }, { kind: 'school', name: '学校', h: 170 }, { kind: 'palace', name: '宫殿', h: 250 },
+    { kind: 'factory', name: '工厂', h: 190 }, { kind: 'abattoir', name: '屠宰场', h: 130 }, { kind: 'hospital', name: '医院', h: 210 }
+  ];
+  const FAIR = [
+    { kind: 'wheel', box: [36, 460, 304, GROUND], say: '摩天轮晃了一下，脚还钉在地里，拔不起来。' },
+    { kind: 'tent', box: [318, 590, 482, GROUND], say: '马戏团的大圆顶帐篷，绳子绷得紧紧的，拔不动。' },
+    { kind: 'carousel', box: [486, 630, 640, GROUND], say: '旋转木马沉得纹丝不动，木马照样一上一下。' },
+    { kind: 'coaster', box: [20, 300, 800, GROUND], say: '过山车的轨道晃了晃，还牢牢地立在原地。' }
+  ];
+  const lotX = i => 810 + i * 124, slotX = i => 810 + i * 124 + 55;
+
+  // The roller coaster track, behind the rest of the fair. Its highest point is where the car waits.
+  const HILLS = [[40, 790], [120, 560], [220, 700], [330, 520], [440, 690], [560, 330], [680, 640], [780, 790]];
+  function track(u){
+    const n = HILLS.length - 1, f = Math.max(0, Math.min(1, u)) * n, i = Math.min(n - 1, Math.floor(f)), t = f - i;
+    const p0 = HILLS[Math.max(0, i - 1)], p1 = HILLS[i], p2 = HILLS[i + 1], p3 = HILLS[Math.min(n, i + 2)];
+    const cr = k => .5 * (2 * p1[k] + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t * t + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t * t * t);
+    return [cr(0), cr(1)];
+  }
+  // The spline overshoots its control points, so the real top is found on the curve itself.
+  const CREST = (() => { let best = 0; for (let k = 0; k <= 2000; k++) if (track(k / 2000)[1] < track(best)[1]) best = k / 2000; return best; })();
+
+  let pieces, phase, year, t0, carT0, carry, wobble, stopAt, shown = -1;
+
+  const loaded = () => pieces.filter(p => p.where === 'truck').length;
+  const day = () => phase === 'away' ? Math.min(AWAY, Math.floor((clock() - t0) * RATE)) : 0;
+
+  // Where the car is on the track: it runs while the stone half is here, and once the caravan has
+  // gone it runs on only until it reaches the top, and waits there.
+  function carU(now){
+    const run = t => ((t - carT0) * SPEED) % 1;
+    if (phase === 'here' || phase === 'leaving') return run(now);
+    return now < stopAt ? run(now) : CREST;
+  }
+
+  function step(){
+    const now = clock();
+    if (phase === 'leaving' && now - t0 >= LEAVE){
+      phase = 'away'; t0 = now;
+      const u = ((now - carT0) * SPEED) % 1; stopAt = now + ((CREST - u + 1) % 1) / SPEED;
+      ui();
+    } else if (phase === 'away' && day() >= AWAY){
+      phase = 'back'; t0 = now; ui();
+    } else if (phase === 'away' && day() !== shown){
+      shown = day(); ui();
+    } else if (phase === 'back' && now - t0 >= BACK){
+      phase = 'here'; year += 1; carT0 = now - CREST / SPEED;
+      pieces.forEach(p => { p.where = 'lot'; p.slot = null; });
+      ui();
+    }
+  }
+
+  function load(i, slot){
+    const p = pieces[i]; p.where = 'truck'; p.slot = slot;
+    if (loaded() === pieces.length){ phase = 'leaving'; t0 = clock(); }
+    ui(); st.redraw();
+  }
+  function freeSlot(x){
+    const used = new Set(pieces.filter(p => p.where === 'truck').map(p => p.slot));
+    let best = null;
+    for (let s = 0; s < pieces.length; s++) if (!used.has(s) && (best == null || Math.abs(slotX(s) - x) < Math.abs(slotX(best) - x))) best = s;
+    return best;
+  }
+
+  // ---- drawing ----
+  function stone(ctx, p, cx, by, s, tilt){
+    const w = 110, h = p.h, x = -w / 2;
+    ctx.save(); ctx.translate(cx, by); ctx.rotate(tilt || 0); ctx.scale(s, s);
+    ctx.fillStyle = C.rule; ctx.strokeStyle = C.chalk; ctx.lineWidth = 2 / Math.max(s, .5);
+    ctx.fillRect(x, -h, w, h); ctx.strokeRect(x, -h, w, h);
+    ctx.beginPath();
+    switch (p.kind){
+      case 'bank':
+        ctx.moveTo(x - 6, -h); ctx.lineTo(0, -h - 32); ctx.lineTo(x + w + 6, -h); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.beginPath();
+        for (let k = 0; k < 4; k++){ const cx2 = x + 18 + k * 25; ctx.moveTo(cx2, -h + 16); ctx.lineTo(cx2, -8); }
+        break;
+      case 'school':
+        ctx.arc(0, -h + 26, 14, 0, 6.29); ctx.moveTo(0, -h + 26); ctx.lineTo(0, -h + 16); ctx.moveTo(0, -h + 26); ctx.lineTo(8, -h + 26);
+        for (let r = 0; r < 3; r++) for (let k = 0; k < 3; k++) ctx.rect(x + 14 + k * 30, -h + 56 + r * 36, 22, 20);
+        break;
+      case 'palace':
+        ctx.moveTo(42, -h); ctx.arc(0, -h, 42, 0, Math.PI, true); ctx.fill(); ctx.stroke(); ctx.beginPath();
+        for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) ctx.rect(x + 10 + k * 25, -h + 20 + r * 52, 14, 30);
+        break;
+      case 'factory':
+        ctx.moveTo(x, -h); for (let k = 0; k < 4; k++){ ctx.lineTo(x + k * 27.5 + 20, -h - 22); ctx.lineTo(x + k * 27.5 + 27.5, -h); }
+        ctx.rect(x + w - 26, -h - 80, 16, 80);
+        for (let k = 0; k < 3; k++) ctx.rect(x + 12 + k * 32, -h + 50, 22, 40);
+        break;
+      case 'abattoir':
+        ctx.moveTo(x, -h + 30); ctx.lineTo(x + w, -h + 30);
+        for (let k = 0; k < 5; k++) ctx.rect(x + 8 + k * 21, -h + 10, 12, 12);
+        ctx.rect(-16, -50, 32, 50);
+        break;
+      case 'hospital':
+        ctx.rect(-8, -h + 18, 16, 44); ctx.rect(-22, -h + 32, 44, 16);
+        for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) ctx.rect(x + 10 + k * 25, -h + 82 + r * 38, 14, 20);
+        break;
+    }
+    ctx.lineWidth = 1.5 / Math.max(s, .5); ctx.stroke();
+    ctx.restore();
+  }
+
+  function wob(kind, now){
+    if (!wobble || wobble.kind !== kind) return 0;
+    const t = now - wobble.t; return t > .7 ? 0 : Math.sin(t * 34) * .045 * (1 - t / .7);
+  }
+  function pivot(ctx, x, y, a){ ctx.translate(x, y); ctx.rotate(a); ctx.translate(-x, -y); }
+
+  function fair(ctx, now){
+    // Roller coaster: track, supports, and the car.
+    ctx.save(); pivot(ctx, 410, GROUND, wob('coaster', now) * .5);
+    ctx.strokeStyle = C.dim; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let u = 0; u <= 1.0001; u += 1 / 70){ const [x, y] = track(u); if (Math.round(u * 70) % 3 === 0){ ctx.moveTo(x, y); ctx.lineTo(x, GROUND); } }
+    ctx.stroke();
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 3; ctx.beginPath();
+    for (let u = 0; u <= 1.0001; u += 1 / 140){ const [x, y] = track(u); u ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke();
+    const u = carU(now), [cx, cy] = track(u), [nx, ny] = track(Math.min(1, u + .004)), a = Math.atan2(ny - cy, nx - cx);
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
+    ctx.fillStyle = C.lamp; ctx.fillRect(-26, -20, 52, 16);
+    for (const k of [-14, 0, 14]) SC.figure(ctx, C.ink, k, -18, .45, 0);
+    ctx.restore();
+    if (u === CREST){
+      // The scream, hanging in the air.
+      ctx.font = '400 26px ' + C.display; ctx.fillStyle = C.lamp; ctx.textAlign = 'center';
+      ctx.globalAlpha = .55 + .25 * Math.sin(now * 2); ctx.fillText('啊——', cx + 40, cy - 54); ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+
+    // Ferris wheel.
+    ctx.save(); pivot(ctx, 170, GROUND, wob('wheel', now));
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.beginPath();
+    ctx.moveTo(170, 600); ctx.lineTo(90, GROUND); ctx.moveTo(170, 600); ctx.lineTo(250, GROUND); ctx.stroke();
+    ctx.beginPath(); ctx.arc(170, 600, 128, 0, 6.29); ctx.stroke();
+    const r0 = now * .22;
+    ctx.beginPath(); for (let k = 0; k < 10; k++){ const a2 = r0 + k * Math.PI / 5; ctx.moveTo(170, 600); ctx.lineTo(170 + 128 * Math.cos(a2), 600 + 128 * Math.sin(a2)); }
+    ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = C.lamp; for (let k = 0; k < 10; k++){ const a2 = r0 + k * Math.PI / 5; ctx.fillRect(170 + 128 * Math.cos(a2) - 8, 600 + 128 * Math.sin(a2), 16, 14); }
+    ctx.restore();
+
+    // Big top with a trapeze.
+    ctx.save(); pivot(ctx, 400, GROUND, wob('tent', now));
+    ctx.fillStyle = C.rule; ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(326, 720); ctx.lineTo(400, 606); ctx.lineTo(474, 720); ctx.lineTo(474, GROUND); ctx.lineTo(326, GROUND); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); for (let k = 1; k < 5; k++){ ctx.moveTo(400, 606); ctx.lineTo(326 + k * 29.6, 720); ctx.lineTo(326 + k * 29.6, GROUND); } ctx.lineWidth = 1; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(400, 606); ctx.lineTo(400, 586); ctx.lineTo(418, 594); ctx.lineTo(400, 600); ctx.fillStyle = C.lamp; ctx.fill();
+    { const sw = Math.sin(now * 1.6) * .5; ctx.strokeStyle = C.lamp; ctx.lineWidth = 1.5; ctx.beginPath();
+      ctx.moveTo(388, 650); ctx.lineTo(388 + 50 * Math.sin(sw), 650 + 50 * Math.cos(sw)); ctx.moveTo(412, 650); ctx.lineTo(412 + 50 * Math.sin(sw), 650 + 50 * Math.cos(sw));
+      ctx.lineTo(388 + 50 * Math.sin(sw), 650 + 50 * Math.cos(sw)); ctx.stroke(); }
+    ctx.restore();
+
+    // Carousel.
+    ctx.save(); pivot(ctx, 563, GROUND, wob('carousel', now));
+    ctx.fillStyle = C.rule; ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(492, 700); ctx.lineTo(563, 640); ctx.lineTo(634, 700); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillRect(492, 700, 142, 10); ctx.strokeRect(492, 700, 142, 10);
+    ctx.fillRect(488, 800, 150, 12); ctx.strokeRect(488, 800, 150, 12);
+    ctx.beginPath(); for (let k = 0; k < 5; k++){ const x = 506 + k * 28.5; ctx.moveTo(x, 710); ctx.lineTo(x, 800); } ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = C.lamp; for (let k = 0; k < 5; k++){ const x = 506 + k * 28.5, y = 756 + 12 * Math.sin(now * 2.4 + k * 1.3); ctx.fillRect(x - 10, y, 20, 10); }
+    ctx.restore();
+  }
+
+  function trucks(ctx, dx){
+    ctx.save(); ctx.translate(dx, 0);
+    ctx.strokeStyle = C.chalk; ctx.fillStyle = C.rule; ctx.lineWidth = 2;
+    for (let s = 0; s < STONE.length; s++){
+      const x = slotX(s);
+      ctx.fillRect(x - 55, ROAD - 12, 110, 12); ctx.strokeRect(x - 55, ROAD - 12, 110, 12);
+      ctx.beginPath(); ctx.arc(x - 34, ROAD + 8, 9, 0, 6.29); ctx.moveTo(x + 43, ROAD + 8); ctx.arc(x + 34, ROAD + 8, 9, 0, 6.29);
+      if (s < STONE.length - 1){ ctx.moveTo(x + 55, ROAD - 6); ctx.lineTo(x + 69, ROAD - 6); }
+      ctx.stroke();
+    }
+    const cx = slotX(STONE.length - 1) + 62;
+    ctx.fillRect(cx, ROAD - 46, 48, 46); ctx.strokeRect(cx, ROAD - 46, 48, 46);
+    ctx.beginPath(); ctx.rect(cx + 24, ROAD - 40, 18, 16); ctx.moveTo(cx + 34, ROAD + 8); ctx.arc(cx + 24, ROAD + 8, 10, 0, 6.29); ctx.stroke();
+    ctx.restore();
+  }
+
+  // The little map: four empty lots on the caravan's yearly round. Ours is "这里".
+  const CORNER = [[1320, 196], [1550, 196], [1550, 70], [1320, 70]];
+  function caravanAt(){
+    if (phase !== 'away') return CORNER[0];
+    let d = day();
+    for (let k = 0; k < 4; k++){
+      const a = CORNER[k], b = CORNER[(k + 1) % 4];
+      if (d < LEG){ const f = d / LEG; return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; }
+      d -= LEG;
+      if (k < 3){ if (d < STAY) return b; d -= STAY; }
+    }
+    return CORNER[0];
+  }
+  function where(){
+    let d = day();
+    for (let k = 0; k < 4; k++){
+      if (d < LEG) return k < 3 ? '车队在路上，往第 ' + (k + 1) + ' 块别的空地去。' : '车队在回来的路上。';
+      d -= LEG;
+      if (k < 3){ if (d < STAY) return '车队停在第 ' + (k + 1) + ' 块别的空地上：那里也有半座游乐场，这些天是它完整的日子。'; d -= STAY; }
+    }
+    return '车队在回来的路上。';
+  }
+  function map(ctx, now){
+    ctx.save();
+    ctx.strokeStyle = C.dim; ctx.lineWidth = 1.5; ctx.setLineDash([6, 6]);
+    ctx.beginPath(); CORNER.forEach((c, k) => k ? ctx.lineTo(c[0], c[1]) : ctx.moveTo(c[0], c[1])); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+    CORNER.forEach((c, k) => {
+      ctx.strokeStyle = k ? C.dim : C.chalk; ctx.beginPath(); ctx.arc(c[0], c[1] - 16, 10, 0, 6.29);
+      const a = now * .22; ctx.moveTo(c[0], c[1] - 16); ctx.lineTo(c[0] + 10 * Math.cos(a), c[1] - 16 + 10 * Math.sin(a)); ctx.stroke();
+    });
+    ctx.font = '400 22px ' + C.display; ctx.fillStyle = C.chalk; ctx.textAlign = 'center'; ctx.fillText('这里', CORNER[0][0], CORNER[0][1] + 24);
+    const [x, y] = caravanAt(); ctx.fillStyle = C.lamp; ctx.fillRect(x - 12, y - 5, 24, 10);
+    ctx.restore();
+  }
+
+  function draw(ctx){
+    step();
+    const now = clock();
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    map(ctx, now);
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, GROUND); ctx.lineTo(W, GROUND); ctx.moveTo(0, ROAD + 20); ctx.lineTo(W, ROAD + 20); ctx.stroke();
+    fair(ctx, now);
+
+    // The empty lots and the names under them.
+    ctx.font = '400 22px ' + C.display; ctx.textAlign = 'center';
+    STONE.forEach((p, i) => {
+      ctx.strokeStyle = C.rule; ctx.setLineDash([6, 6]); ctx.strokeRect(lotX(i), GROUND - 30, 110, 30); ctx.setLineDash([]);
+      ctx.fillStyle = C.dim; ctx.fillText(p.name, lotX(i) + 55, GROUND + 22);
+    });
+
+    // Trucks: parked, driving off, gone, or coming back.
+    let dx = 0, land = 1;
+    if (phase === 'leaving'){ const e = Math.min(1, (clock() - t0) / LEAVE); dx = 1100 * e * e; }
+    if (phase === 'back'){ const e = (clock() - t0) / BACK, k = Math.min(1, e / .6); dx = 1100 * (1 - k) * (1 - k); land = Math.max(0, Math.min(1, (e - .6) / .4)); }
+    if (phase !== 'away') trucks(ctx, dx);
+
+    pieces.forEach((p, i) => {
+      if (p.where === 'lot') stone(ctx, p, lotX(i) + 55, GROUND, 1, 0);
+      else if (p.where === 'truck' && phase !== 'away'){
+        const sx = slotX(p.slot) + dx, sy = ROAD - 12;
+        if (phase === 'back'){ const v = land * land * (3 - 2 * land); stone(ctx, p, sx + (lotX(i) + 55 - sx) * v, sy + (GROUND - sy) * v, .45 + .55 * v, 0); }
+        else stone(ctx, p, sx, sy, .45, 0);
+      }
+    });
+    if (carry != null){ const p = pieces[carry]; stone(ctx, p, p.hx, p.hy, 1, Math.sin(now * 7) * .04); }
+  }
+
+  function ui(){
+    const k = loaded(), btn = document.getElementById('load');
+    btn.disabled = phase !== 'here';
+    let m, moral;
+    if (phase === 'here'){
+      m = '第 ' + year + ' 年 · 石头那半在城里 · 装上车 ' + k + ' / ' + STONE.length + ' 座';
+      moral = year >= 2 ? '车队要绕过另外三块空地才回到这里，所以一年里大半的日子，索伏洛尼亚只是一座游乐场。看起来最结实的那一半，是这座城一直在等的东西。'
+            : k ? '大理石的屋檐、石头墙、水泥柱子，拆起来都出奇地轻。'
+            : '一半是游乐场，一半是石头。哪一半是临时的？看着像是帐篷和木马。试着把房子拖到下面路边的拖车上。';
+    } else if (phase === 'leaving'){
+      m = '第 ' + year + ' 年 · 车队出发'; moral = '时限一到，石头那半就拔钉子、拆架子，装上拖车，按每年固定的路线一个广场一个广场地走。';
+    } else if (phase === 'away'){
+      const d = day(); m = '第 ' + year + ' 年 · 车队走了 ' + d + ' 天 · 还有 ' + (AWAY - d) + ' 天回来';
+      moral = '留下来的半个索伏洛尼亚还有射击场和旋转木马，过山车停在最高处，尖叫悬在半空。它开始数还要等几个月、几天。';
+    } else { m = '第 ' + year + ' 年 · 车队回来了'; moral = '车队回来了，完整的城市生活重新开始。'; }
+    document.getElementById('meter').textContent = m;
+    document.getElementById('moral').textContent = moral;
+    if (phase === 'away') caption(where());
+    if (phase === 'back') caption('车队开回来了，房子一座座卸回原来的空地上。过山车冲了下去。');
+  }
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  const canvas = document.getElementById('c');
+  function worldXY(e){ const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height]; }
+  let grabDy = 0;
+  canvas.addEventListener('pointerdown', e => {
+    const [x, y] = worldXY(e);
+    if (phase !== 'here'){ caption(phase === 'away' ? '车队不在。空地上什么都抓不到。' : '车队正在路上。'); return; }
+    for (let i = 0; i < pieces.length; i++){
+      const p = pieces[i];
+      if (p.where === 'lot' && x >= lotX(i) && x <= lotX(i) + 110 && y >= GROUND - p.h - 40 && y <= GROUND){
+        carry = i; p.where = 'hand'; p.hx = lotX(i) + 55; p.hy = GROUND; grabDy = GROUND - y; p.gx = x - p.hx;
+        if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+        caption(p.name + '一抓就起来了，轻得像纸板。'); st.redraw(); return;
+      }
+    }
+    for (const f of FAIR){
+      const b = f.box;
+      if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3]){ wobble = { kind: f.kind, t: clock() }; caption(f.say); st.redraw(); return; }
+    }
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (carry == null) return;
+    const [x, y] = worldXY(e), p = pieces[carry]; p.hx = x - p.gx; p.hy = y + grabDy; st.redraw();
+  });
+  function release(){
+    if (carry == null) return;
+    const i = carry, p = pieces[i]; carry = null;
+    if (p.hy > DROP){ caption(p.name + '装上车了。'); load(i, freeSlot(p.hx)); }
+    else { p.where = 'lot'; caption(p.name + '又放回了原来的空地。要装车，得放到下面的路上。'); st.redraw(); }
+  }
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+
+  function loadNext(){
+    if (phase !== 'here') return;
+    const i = pieces.findIndex(p => p.where === 'lot'); if (i < 0) return;
+    caption(pieces[i].name + '一抓就起来了，装上车了。'); load(i, freeSlot(slotX(i)));
+  }
+
+  function reset(){
+    pieces = STONE.map(p => Object.assign({}, p, { where: 'lot', slot: null }));
+    phase = 'here'; year = 1; t0 = clock(); carT0 = clock(); carry = null; wobble = null; stopAt = 0;
+    caption('石头那半刚卸完货。左边的游乐场，右边的石头城。'); ui(); if (st) st.redraw();
+  }
+
+  let st = null;
+  reset();
+  st = SC.stage(canvas, W, H, draw);
+  // The days keep counting even with reduced motion, when nothing redraws on its own.
+  setInterval(() => { const before = phase; step(); if (reduce || phase !== before) st.redraw(); }, 250);
+  document.getElementById('load').addEventListener('click', loadNext);
+  document.getElementById('reset').addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>
