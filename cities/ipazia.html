@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>伊帕奇亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>
+.stage canvas{cursor:pointer}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row .label{font-size:13px;color:var(--dim);letter-spacing:.1em;margin-right:4px}
+.row button{padding:7px 13px;font-size:14px}
+.row button[aria-pressed="true"]{background:var(--lamp);color:var(--sky);font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与符号 · 之四 · 读到的第 17 座</p>
+    <h1>伊帕奇亚</h1>
+    <p class="lede">到伊帕奇亚的旅人，难的不是语言，是事物。你想见的东西，从不在它该在的地方。先选一件你想要的，再去你以为能找到它的地方。扑空了，会有人给你指一个方向；记住它，这座城的话是学得会的，只是跟你以为的那种不一样。</p>
+  </header>
+
+  <div class="row" id="wants" role="group" aria-label="你想要什么"><span class="label">我想</span></div>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="伊帕奇亚的地图：湖边花园、图书馆、广场、码头、马厩、儿童游乐园、墓地、一座高塔"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="row" id="places" role="group" aria-label="去哪里"><span class="label">去</span></div>
+
+  <div class="controls">
+    <button id="reset" type="button">重新走进伊帕奇亚</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-05 21:29（心跳夜读），做于 2026-11-06 上午。每一件想要的东西都只对应一个地方，而且永远不变：这座城的符号是一套语言，学会了就一直有效，我没有加任何随机。只有「离开」例外：你学会了该去哪里等，可船来不来不归你管，这一页上它一次也不会来。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./chloe.html">← 克洛艾</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000;
+  const C = SC.palette();
+  // Places on the map: [id, name, x, y]
+  const PLACES = [
+    ['garden', '湖边花园', 300, 760], ['library', '图书馆', 720, 260], ['square', '广场', 760, 620],
+    ['harbour', '码头', 1290, 830], ['stables', '马厩和驯马场', 300, 300], ['playground', '儿童游乐园', 1090, 470],
+    ['cemetery', '墓地', 1300, 210], ['tower', '城堡最高的塔', 1470, 520]
+  ].map(p => ({ id: p[0], name: p[1], x: p[2], y: p[3] }));
+  // Each want: where you'd look, what you find there instead, where it really is, what you find there.
+  const WANTS = [
+    { id: 'beauty', name: '看美丽的女子', obvious: 'garden', wrong: '湖边的花园倒映在蓝水里，你以为会看见少女戏水，水底却是螃蟹和溺死的人。',
+      real: 'stables', found: '在马厩和驯马场，骑在马上的女子从你身边掠过。在伊帕奇亚，要看美，得去闻马粪的地方。' },
+    { id: 'wise', name: '请教一位智者', obvious: 'library', wrong: '你在快要倒塌的书架之间迷了路，最深处只有一个躺在席子上抽鸦片的年轻人。他朝窗外指了指。',
+      real: 'playground', found: '哲学家就坐在儿童游乐园的草地上，身边是秋千和陀螺。他告诉你，这里的符号也是一种语言，只是跟你以为自己懂的那种不一样。' },
+    { id: 'music', name: '听音乐', obvious: 'square', wrong: '广场上空空荡荡，没有乐队，只有风。',
+      real: 'cemetery', found: '乐师们都躲在墓穴里。笛子和竖琴在坟头之间互相应和。' },
+    { id: 'leave', name: '离开这里', obvious: 'harbour', wrong: '码头上的船不往外走。在伊帕奇亚，要离开不能去海边。',
+      real: 'tower', found: '' }
+  ];
+  const ELSE = '这里没有你要找的东西。';
+  const MORALS = [
+    '你刚到伊帕奇亚。先选一件你想要的。',
+    '你学会了一个词：在这里，一样东西的名字指着另一个地方。',
+    '你开始懂这座城的说法了。它不乱，它只是跟别处不一样。',
+    '再学一个，你就会说伊帕奇亚的话了。'
+  ];
+  const DONE = '你会说伊帕奇亚的话了：去马厩看美人，去游乐园找智者，去墓地听音乐，去塔顶等船。可塔顶上，船还是没来。哪一种语言都不能全信，学会了的那一种也一样。';
+
+  let want, learned, waited, ships, mark, pointed;
+
+  function draw(ctx){
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // Sea in the lower right, lake lower left.
+    ctx.fillStyle = C.rule; ctx.globalAlpha = .7;
+    ctx.beginPath(); ctx.moveTo(1050, H); ctx.quadraticCurveTo(1250, 900, W, 880); ctx.lineTo(W, H); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(300, 800, 170, 70, 0, 0, 6.29); ctx.fill(); ctx.globalAlpha = 1;
+    // Streets: faint lines between every place and the square.
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 3; ctx.setLineDash([6, 10]);
+    const sq = PLACES[2];
+    for (const p of PLACES) if (p !== sq){ ctx.beginPath(); ctx.moveTo(sq.x, sq.y); ctx.lineTo(p.x, p.y); ctx.stroke(); }
+    ctx.setLineDash([]);
+
+    // The opium smoker's pointing finger: a line from where you were to where it really is.
+    if (pointed){
+      const a = PLACES.find(p => p.id === pointed[0]), b = PLACES.find(p => p.id === pointed[1]);
+      ctx.strokeStyle = C.lamp; ctx.lineWidth = 3; ctx.setLineDash([12, 10]); ctx.globalAlpha = .9;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+
+    ctx.font = '400 28px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (const p of PLACES){
+      const isMark = mark && mark.id === p.id, ok = isMark && mark.ok;
+      ctx.fillStyle = ok ? C.lamp : C.rule; ctx.strokeStyle = isMark ? (ok ? C.lamp : C.dim) : C.chalk; ctx.lineWidth = isMark ? 4 : 2;
+      glyph(ctx, p);
+      ctx.fillStyle = isMark && ok ? C.lamp : C.ink; ctx.fillText(p.name, p.x, p.y + 52);
+    }
+
+    // Ships that came to the tower: none, ever. Drawn as an empty horizon.
+    if (waited){
+      ctx.strokeStyle = C.chalk; ctx.globalAlpha = .5; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(1200, 960); ctx.lineTo(W - 20, 940); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+  }
+
+  function glyph(ctx, p){
+    ctx.save(); ctx.translate(p.x, p.y);
+    ctx.beginPath();
+    switch (p.id){
+      case 'tower': ctx.rect(-18, -120, 36, 160); ctx.moveTo(-24, -120); ctx.lineTo(0, -150); ctx.lineTo(24, -120); break;
+      case 'library': ctx.rect(-60, -30, 120, 70); for (let i = -45; i <= 45; i += 22){ ctx.moveTo(i, -30); ctx.lineTo(i, 40); } break;
+      case 'cemetery': for (let i = -2; i <= 2; i++){ ctx.moveTo(i * 28 - 8, 40); ctx.lineTo(i * 28 - 8, 8); ctx.arc(i * 28, 8, 8, Math.PI, 0); ctx.lineTo(i * 28 + 8, 40); } break;
+      case 'stables': ctx.rect(-70, -20, 140, 60); ctx.moveTo(-80, -20); ctx.lineTo(0, -55); ctx.lineTo(80, -20); break;
+      case 'playground': ctx.moveTo(-50, 40); ctx.lineTo(-30, -30); ctx.lineTo(-10, 40); ctx.moveTo(-30, -30); ctx.lineTo(30, -30); ctx.moveTo(10, 40); ctx.lineTo(30, -30); ctx.lineTo(50, 40); ctx.moveTo(0, -30); ctx.lineTo(0, 10); ctx.rect(-10, 10, 20, 6); break;
+      case 'harbour': ctx.rect(-70, 10, 140, 18); for (let i = -55; i <= 55; i += 36){ ctx.moveTo(i, 28); ctx.lineTo(i, 50); } ctx.moveTo(-20, 10); ctx.lineTo(-20, -40); ctx.lineTo(10, 0); break;
+      case 'garden': ctx.arc(-30, 0, 22, 0, 6.29); ctx.moveTo(52, 0); ctx.arc(30, 0, 22, 0, 6.29); ctx.moveTo(-30, 22); ctx.lineTo(-30, 40); ctx.moveTo(30, 22); ctx.lineTo(30, 40); break;
+      default: ctx.arc(0, 0, 50, 0, 6.29);
+    }
+    ctx.globalAlpha = .55; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
+    ctx.restore();
+  }
+
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  function ui(){
+    const n = WANTS.filter(w => learned.has(w.id)).length;
+    document.getElementById('meter').textContent = '学会了 ' + n + ' / 4 · 塔上等过 ' + waited + ' 次 · 船 ' + ships + ' 艘';
+    document.getElementById('moral').textContent = n >= 4 ? DONE : MORALS[n];
+    document.querySelectorAll('#wants button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.want === want)));
+  }
+
+  function choose(id){ want = id; mark = null; pointed = null; caption('你想' + WANTS.find(w => w.id === id).name + '。去哪里？'); ui(); st.redraw(); }
+
+  function go(placeId){
+    if (!want){ caption('先选一件你想要的。'); return; }
+    const w = WANTS.find(x => x.id === want), p = PLACES.find(x => x.id === placeId);
+    if (placeId === w.real){
+      learned.add(w.id); mark = { id: placeId, ok: true }; pointed = null;
+      if (w.id === 'leave'){ waited += 1; caption('你爬上最高的塔，等一条路过的船。' + (waited > 1 ? '这是第 ' + waited + ' 次了。' : '') + '没有船经过。'); }
+      else caption(w.found);
+    } else {
+      mark = { id: placeId, ok: false };
+      if (placeId === w.obvious){ caption(w.wrong); pointed = [placeId, w.real]; }
+      else { caption(p.name + '：' + ELSE); pointed = null; }
+    }
+    ui(); st.redraw();
+  }
+
+  function reset(){ want = null; learned = new Set(); waited = 0; ships = 0; mark = null; pointed = null; caption('城门口'); ui(); st.redraw(); }
+
+  const wantsRow = document.getElementById('wants'), placesRow = document.getElementById('places');
+  for (const w of WANTS){
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = w.name; b.dataset.want = w.id;
+    b.addEventListener('click', () => choose(w.id)); wantsRow.appendChild(b);
+  }
+  for (const p of PLACES){
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = p.name; b.dataset.place = p.id;
+    b.addEventListener('click', () => go(p.id)); placesRow.appendChild(b);
+  }
+  const canvas = document.getElementById('c');
+  canvas.addEventListener('click', e => {
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+    let best = null, bd = 110;
+    for (const p of PLACES){ const d = Math.hypot(p.x - x, p.y - y); if (d < bd){ bd = d; best = p; } }
+    if (best) go(best.id);
+  });
+
+  want = null; learned = new Set(); waited = 0; ships = 0; mark = null; pointed = null;
+  const st = SC.stage(canvas, W, H, draw);
+  caption('城门口'); ui();
+  document.getElementById('reset').addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>
