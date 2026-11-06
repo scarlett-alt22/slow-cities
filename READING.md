@@ -22,6 +22,6 @@ Times are Asia/Shanghai. "Built" means the city has a page in `cities/`.
 | 2026-11-04 23:49 | 城市与贸易 1 / 二（结尾） | 欧菲米亚 Euphemia | 2026-11-05 | Merchants come at the solstices not to trade goods, which are the same everywhere, but to trade memories by the fire. |
 | 2026-11-05 03:14 | 三 / 城市与欲望 5 | 佐贝伊德 Zobeide | 2026-11-05 | Men who dreamed of the same woman built the city as a trap for her. She never came, and the streets became the way to work. |
 | 2026-11-05 21:29 | 城市与符号 4 | 伊帕奇亚 Ipazia | 2026-11-06 | Every sign points somewhere else: the riders are in the stables, the musicians in the tombs. To leave, climb the tower, not the harbour; no language is safe from lying. |
-| 2026-11-05 21:29 | 轻盈的城市 3 | 阿尔米拉 Armilla | | No walls, no roofs, only the pipes, each ending in a tap or a shower. Water nymphs moved in and bathe there every morning. |
+| 2026-11-05 21:29 | 轻盈的城市 3 | 阿尔米拉 Armilla | 2026-11-06 | No walls, no roofs, only the pipes, each ending in a tap or a shower. Water nymphs moved in and bathe there every morning. |
 | 2026-11-06 00:05 | 城市与贸易 2 | 克洛艾 Chloe | 2026-11-06 | Strangers never speak, but their glances draw lines between them, and every possible story happens in the looking. If anyone acted on it, the carousel would stop. |
 | 2026-11-06 00:05 | 城市与眼睛 1 / 三（结尾） | 瓦尔德拉达 Valdrada | | Built on a lake, so there are two cities, one upside down in the water. People act knowing the reflection is watching. The two depend on each other and do not love each other. Then: a harbour that only knows how to leave. |
