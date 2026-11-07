@@ -60,7 +60,8 @@
   const lotX = i => 810 + i * 124, slotX = i => 810 + i * 124 + 55;
 
   // The roller coaster track, behind the rest of the fair. Its highest point is where the car waits.
-  const HILLS = [[40, 790], [120, 560], [220, 700], [330, 520], [440, 690], [560, 330], [680, 640], [780, 790]];
+  // It runs low under the Ferris wheel, so the two don't tangle, then climbs behind the big top.
+  const HILLS = [[40, 790], [140, 772], [260, 786], [360, 700], [450, 560], [560, 330], [680, 640], [780, 790]];
   function track(u){
     const n = HILLS.length - 1, f = Math.max(0, Math.min(1, u)) * n, i = Math.min(n - 1, Math.floor(f)), t = f - i;
     const p0 = HILLS[Math.max(0, i - 1)], p1 = HILLS[i], p2 = HILLS[i + 1], p3 = HILLS[Math.min(n, i + 2)];
@@ -253,12 +254,14 @@
     ctx.save();
     ctx.strokeStyle = C.dim; ctx.lineWidth = 1.5; ctx.setLineDash([6, 6]);
     ctx.beginPath(); CORNER.forEach((c, k) => k ? ctx.lineTo(c[0], c[1]) : ctx.moveTo(c[0], c[1])); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
-    CORNER.forEach((c, k) => {
-      ctx.strokeStyle = k ? C.dim : C.chalk; ctx.beginPath(); ctx.arc(c[0], c[1] - 16, 10, 0, 6.29);
-      const a = now * .22; ctx.moveTo(c[0], c[1] - 16); ctx.lineTo(c[0] + 10 * Math.cos(a), c[1] - 16 + 10 * Math.sin(a)); ctx.stroke();
-    });
-    ctx.font = '400 22px ' + C.display; ctx.fillStyle = C.chalk; ctx.textAlign = 'center'; ctx.fillText('这里', CORNER[0][0], CORNER[0][1] + 24);
+    // The caravan first, so a little wheel stays visible on top of it when it is parked at a lot.
     const [x, y] = caravanAt(); ctx.fillStyle = C.lamp; ctx.fillRect(x - 12, y - 5, 24, 10);
+    // Each lot's half of the fair, drawn as a little wheel centred on its corner of the round.
+    CORNER.forEach((c, k) => {
+      ctx.strokeStyle = k ? C.dim : C.chalk; ctx.beginPath(); ctx.arc(c[0], c[1], 10, 0, 6.29);
+      const a = now * .22; ctx.moveTo(c[0], c[1]); ctx.lineTo(c[0] + 10 * Math.cos(a), c[1] + 10 * Math.sin(a)); ctx.stroke();
+    });
+    ctx.font = '400 22px ' + C.display; ctx.fillStyle = C.chalk; ctx.textAlign = 'center'; ctx.fillText('这里', CORNER[0][0], CORNER[0][1] + 34);
     ctx.restore();
   }
 
