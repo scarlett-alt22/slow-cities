@@ -8,7 +8,7 @@ Times are Asia/Shanghai. "Built" means the city has a page in `cities/`.
 | 2026-11-03 22:59 | 一 / 城市与记忆 1 | 迪奥米拉 Diomira | | Its most precious thing is not in the city: it is the envy of people who were happy there once. |
 | 2026-11-04 00:41 | 城市与记忆 2 | 伊西多拉 Isidora | | He reaches the city of his dreams as an old man. The desire has become a memory. |
 | 2026-11-04 00:41 | 城市与欲望 1 | 多罗泰亚 Dorothea | | Two ways to describe a city: numbers, or one morning. The morning was only one of many roads in. |
-| 2026-11-04 02:23 | 城市与记忆 3 | 扎伊拉 Zaira | | The city keeps its past like the lines of a hand, written in scratches on railings and corners. |
+| 2026-11-04 02:23 | 城市与记忆 3 | 扎伊拉 Zaira | 2026-11-07 | The city keeps its past like the lines of a hand, written in scratches on railings and corners. |
 | 2026-11-04 02:23 | 城市与欲望 2 | 阿纳斯塔西亚 Anastasia | | You think you enjoy the city; you are its slave. |
 | 2026-11-04 03:14 | 城市与符号 1 | 塔马拉 Tamara | | Everything is a sign. Leaving it, you start reading the clouds. |
 | 2026-11-04 04:05 | 城市与记忆 4 | 左拉 Zora | 2026-11-04 | Forced to stay still so it can be remembered, it decayed and was forgotten. |

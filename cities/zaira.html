@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>扎伊拉 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>.stage canvas{cursor:pointer}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与记忆 · 之三 · 读到的第 4 座</p>
+    <h1>扎伊拉</h1>
+    <p class="lede">扎伊拉有多少级台阶、拱廊的拱有多弯、屋顶铺的是什么，都量得出来；可是这样描述它，等于什么也没说。这座城是由空间的尺寸和过去的事件之间的关系组成的。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="扎伊拉：一条街上有一根路灯、一座带阳台和窗户的房子、一根檐沟；右边是码头、晾着的渔网和海岬。每样东西旁边都标着尺寸"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="next" type="button">下一段过去</button>
+    <button id="reset" type="button">回到只有尺寸的扎伊拉</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-04 02:23（夜读），做于 2026-11-07 中午。书里这串关系是一环扣一环的：路灯扣着篡位者，篡位者扣着女王，女王大婚的彩带扣着栏杆，一直扣到码头上补网的老人，他们讲的又是那个篡位者。所以这里每吸进一段，就会提示下一段，六段都吸进去，线头绕回起点。尺寸上的数字是我编的，书里一个数也没给。点尺寸或者它标的那样东西；用不了鼠标就按上面的按钮。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./sophronia.html">← 索伏洛尼亚</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, GROUND = 820, SEA = 842;
+  const DUR = 3.6;                                 // seconds a memory takes to soak in
+  const GROW = .015;                               // how much the city swells per memory
+  const C = SC.palette();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => performance.now() / 1000;
+
+  // The street's fixed points.
+  const LAMP = { x: 260, top: 520, arm: [330, 530] };
+  const RAIL = { x0: 540, x1: 680, floor: 640, top: 600 };
+  const GUTTER = [[540, 372], [830, 404]];
+  const WINDOW = [722, 430, 82, 92];
+  const CAPE = [1500, 770];
+  const NET = [1120, 690, 160, 130];
+
+  // Six measurements, in the order the book chains them. Each one is also something that happened.
+  const PARTS = [
+    { id: 'lamp',    label: '4.1 m',   name: '路灯的高度',
+      say: '路灯 4.1 米高。篡位者被吊起来的那天，他悬着的脚晃来晃去，离地也是这个高度。' },
+    { id: 'festoon', label: '3.2 m',   name: '路灯到栏杆的绳',
+      say: '从路灯拉到对面栏杆的这根绳，3.2 米。女王大婚那天，游行经过这条街，彩带就挂在它上面。' },
+    { id: 'rail',    label: '3.1 m',   name: '栏杆的高度',
+      say: '阳台栏杆离地 3.1 米。那个情夫天快亮时翻过它跳下去，跳的就是这个高度。' },
+    { id: 'gutter',  label: '6°',      name: '檐沟的斜度',
+      say: '檐沟斜 6°。一只猫顺着它走过去，溜进了同一扇窗。' },
+    { id: 'range',   label: '1.6 km',  name: '炮艇的射程',
+      say: '海岬后面冒出一艘炮艇，射程 1.6 公里，一发炮弹正好打断了这根檐沟。' },
+    { id: 'net',     label: '3 处破洞', name: '渔网的破洞',
+      say: '渔网上三处破洞。码头上三个老人一边补，一边第一百遍讲那艘炮艇，讲那个篡位者：有人说，他就是女王的私生子，当年裹在襁褓里被丢在这个码头上。' }
+  ];
+  const N = PARTS.length;
+
+  // Where each measurement's label sits (also where you can press it), and what it measures.
+  const LABEL = {
+    lamp: [196, 670], festoon: [452, 540], rail: [722, 708], gutter: [690, 340], range: [1180, 470], net: [1200, 660]
+  };
+  const HIT = {
+    lamp: [150, 500, 340, 820], festoon: [380, 500, 530, 600], rail: [530, 580, 760, 740],
+    gutter: [530, 300, 850, 420], range: [1050, 420, 1330, 520], net: [1100, 630, 1300, 840]
+  };
+
+  let soaked, playing, hintAt;
+
+  const count = () => soaked.filter(Boolean).length;
+  const nextIndex = () => { for (let k = 0; k < N; k++){ const i = (hintAt + k) % N; if (!soaked[i]) return i; } return -1; };
+  const phaseOf = now => !playing ? 1 : reduce ? .6 : Math.min(1, (now - playing.t) / DUR);
+  const gutterBroken = () => soaked[4] || (playing && playing.i === 4 && phaseOf(clock()) > .72);
+
+  function step(){
+    if (playing && (reduce ? clock() - playing.t >= .25 : clock() - playing.t >= DUR)){
+      const i = playing.i; playing = null; soaked[i] = true; hintAt = (i + 1) % N;
+      ui();
+      if (count() === N) caption('六段都吸进去了。码头上的老人讲的那个篡位者，又把线头扣回了路灯。');
+    }
+  }
+
+  function remember(i){
+    if (playing || soaked[i]) return;
+    playing = { i, t: clock() };
+    caption(PARTS[i].say); ui(); if (st) st.redraw();
+  }
+
+  // ---- drawing ----
+  function dimLine(ctx, a, b, alpha){
+    ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = C.dim; ctx.lineWidth = 1.5; ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]);
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]) + Math.PI / 2, dx = 9 * Math.cos(ang), dy = 9 * Math.sin(ang);
+    ctx.beginPath(); for (const p of [a, b]){ ctx.moveTo(p[0] - dx, p[1] - dy); ctx.lineTo(p[0] + dx, p[1] + dy); } ctx.stroke();
+    ctx.restore();
+  }
+  function dims(ctx, now){
+    const nx = nextIndex();
+    ctx.save();
+    PARTS.forEach((p, i) => {
+      const faded = soaked[i], a = faded ? .22 : 1;
+      if (p.id === 'lamp') dimLine(ctx, [196, GROUND], [196, LAMP.top], a);
+      if (p.id === 'festoon') dimLine(ctx, [LAMP.arm[0], LAMP.arm[1] - 24], [RAIL.x0, RAIL.top - 24], a);
+      if (p.id === 'rail') dimLine(ctx, [700, GROUND], [700, RAIL.top], a);
+      if (p.id === 'gutter'){ ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = C.dim; ctx.lineWidth = 1.5; ctx.beginPath();
+        ctx.moveTo(GUTTER[0][0], GUTTER[0][1]); ctx.lineTo(GUTTER[0][0] + 160, GUTTER[0][1]); ctx.moveTo(GUTTER[0][0] + 130, GUTTER[0][1]);
+        ctx.arc(GUTTER[0][0], GUTTER[0][1], 130, 0, Math.atan2(GUTTER[1][1] - GUTTER[0][1], GUTTER[1][0] - GUTTER[0][0])); ctx.stroke(); ctx.restore(); }
+      if (p.id === 'range'){ ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = C.dim; ctx.lineWidth = 1.5; ctx.setLineDash([5, 5]); ctx.beginPath();
+        const m = mid(); ctx.moveTo(CAPE[0], CAPE[1] + 40); ctx.quadraticCurveTo(1170, 300, m[0], m[1]); ctx.stroke(); ctx.restore(); }
+      const [lx, ly] = LABEL[p.id], pulse = !faded && i === nx && !playing && count() > 0;
+      ctx.globalAlpha = faded ? .3 : pulse ? .65 + .35 * Math.sin(now * 3) : 1;
+      ctx.font = '400 26px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = pulse ? C.lamp : C.chalk; ctx.fillText(p.label, lx, ly);
+      ctx.globalAlpha = 1;
+    });
+    ctx.restore();
+  }
+
+  // Scratches, notches and little scrolls, left on a thing once its memory has soaked in.
+  function marks(ctx, i, pts){
+    const r = SC.rng(31 + i * 7);
+    ctx.save(); ctx.strokeStyle = C.lamp; ctx.globalAlpha = .85; ctx.lineWidth = 1.5; ctx.beginPath();
+    pts.forEach(([x, y]) => {
+      const kind = Math.floor(r() * 3), s = 5 + r() * 5;
+      if (kind === 0){ ctx.moveTo(x - s, y - s * .6); ctx.lineTo(x + s, y + s * .6); }
+      else if (kind === 1){ ctx.moveTo(x - s, y); ctx.lineTo(x, y + s * .8); ctx.lineTo(x + s, y); }
+      else { ctx.moveTo(x + s * .7, y); ctx.arc(x, y, s * .7, 0, 4.5); }
+    });
+    ctx.stroke(); ctx.restore();
+  }
+  const mid = () => [(GUTTER[0][0] + GUTTER[1][0]) / 2, (GUTTER[0][1] + GUTTER[1][1]) / 2];   // where the shell lands
+  const along = (a, b, n, off) => Array.from({ length: n }, (_, k) => { const f = (k + .5) / n; return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f + (off || 0)]; });
+
+  function street(ctx){
+    ctx.save(); ctx.strokeStyle = C.ink; ctx.fillStyle = C.rule; ctx.lineWidth = 2.5;
+    // Lamppost.
+    ctx.beginPath(); ctx.moveTo(LAMP.x, GROUND); ctx.lineTo(LAMP.x, LAMP.top); ctx.lineTo(LAMP.arm[0], LAMP.arm[1]); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(LAMP.arm[0] - 12, LAMP.arm[1]); ctx.lineTo(LAMP.arm[0] + 12, LAMP.arm[1]); ctx.lineTo(LAMP.arm[0] + 7, LAMP.arm[1] + 22); ctx.lineTo(LAMP.arm[0] - 7, LAMP.arm[1] + 22); ctx.closePath();
+    ctx.fillStyle = C.lamp; ctx.fill(); ctx.fillStyle = C.rule;
+    // House with its balcony and the window.
+    ctx.fillRect(540, 372, 300, GROUND - 372); ctx.strokeRect(540, 372, 300, GROUND - 372);
+    ctx.beginPath(); ctx.moveTo(520, 376); ctx.lineTo(690, 300); ctx.lineTo(860, 376); ctx.stroke();
+    ctx.strokeRect(WINDOW[0], WINDOW[1], WINDOW[2], WINDOW[3]);
+    ctx.beginPath(); ctx.moveTo(WINDOW[0] + WINDOW[2] / 2, WINDOW[1]); ctx.lineTo(WINDOW[0] + WINDOW[2] / 2, WINDOW[1] + WINDOW[3]); ctx.stroke();
+    ctx.strokeRect(570, 520, 70, 120);                              // the balcony door
+    ctx.strokeRect(740, 690, 60, 130);                              // the street door
+    ctx.lineWidth = 2; ctx.beginPath();
+    ctx.moveTo(RAIL.x0 - 30, RAIL.floor); ctx.lineTo(RAIL.x1, RAIL.floor); ctx.moveTo(RAIL.x0 - 30, RAIL.top); ctx.lineTo(RAIL.x1, RAIL.top);
+    for (let x = RAIL.x0 - 30; x <= RAIL.x1; x += 14){ ctx.moveTo(x, RAIL.top); ctx.lineTo(x, RAIL.floor); }
+    ctx.stroke();
+    // The gutter, whole or broken by the shell.
+    ctx.lineWidth = 4; ctx.beginPath();
+    if (gutterBroken()){
+      const m1 = mid();
+      ctx.moveTo(GUTTER[0][0], GUTTER[0][1]); ctx.lineTo(m1[0] - 30, m1[1] - 3);
+      ctx.moveTo(m1[0] + 26, m1[1] + 3); ctx.lineTo(m1[0] + 40, m1[1] + 60);     // the bit left hanging
+      ctx.moveTo(m1[0] + 70, m1[1] + 6); ctx.lineTo(GUTTER[1][0], GUTTER[1][1]);
+    } else { ctx.moveTo(GUTTER[0][0], GUTTER[0][1]); ctx.lineTo(GUTTER[1][0], GUTTER[1][1]); }
+    ctx.stroke();
+    // The rope from the lamp to the railing.
+    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(LAMP.arm[0], LAMP.arm[1]); ctx.lineTo(RAIL.x0 - 30, RAIL.top); ctx.stroke();
+    ctx.restore();
+  }
+
+  function harbour(ctx){
+    ctx.save(); ctx.strokeStyle = C.ink; ctx.fillStyle = C.rule; ctx.lineWidth = 2.5;
+    ctx.fillRect(1040, SEA - 22, 300, 22); ctx.strokeRect(1040, SEA - 22, 300, 22);   // the dock
+    for (let x = 1060; x < 1340; x += 50){ ctx.beginPath(); ctx.moveTo(x, SEA); ctx.lineTo(x, SEA + 60); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(1400, SEA); ctx.quadraticCurveTo(1450, 720, CAPE[0], CAPE[1]); ctx.lineTo(1600, 730); ctx.lineTo(1600, SEA); ctx.closePath(); ctx.fill(); ctx.stroke();
+    // The net drying on two poles, with its three holes.
+    const [nx, ny, nw, nh] = NET;
+    ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(nx, SEA - 22); ctx.lineTo(nx, ny - 10); ctx.moveTo(nx + nw, SEA - 22); ctx.lineTo(nx + nw, ny - 10); ctx.stroke();
+    ctx.lineWidth = 1; ctx.strokeStyle = C.dim; ctx.beginPath();
+    for (let k = 0; k <= 8; k++){ ctx.moveTo(nx + k * nw / 8, ny); ctx.lineTo(nx + k * nw / 8, ny + nh - 22); }
+    for (let k = 0; k <= 5; k++){ ctx.moveTo(nx, ny + k * (nh - 22) / 5); ctx.lineTo(nx + nw, ny + k * (nh - 22) / 5); }
+    ctx.stroke();
+    ctx.fillStyle = C.sky; ctx.strokeStyle = C.ink;
+    for (const [hx, hy, r] of [[1150, 720, 11], [1215, 760, 14], [1255, 712, 9]]){
+      if (soaked[5] || (playing && playing.i === 5)) continue;              // mended once the old men have been at it
+      ctx.beginPath(); ctx.arc(hx, hy, r, 0, 6.29); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function cat(ctx, x, y, a){
+    ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.fillStyle = C.ink;
+    ctx.beginPath(); ctx.ellipse(0, -9, 15, 7, 0, 0, 6.29); ctx.fill();
+    ctx.beginPath(); ctx.arc(14, -16, 6, 0, 6.29); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(11, -20); ctx.lineTo(12, -27); ctx.lineTo(16, -21); ctx.moveTo(16, -21); ctx.lineTo(19, -26); ctx.lineTo(20, -18); ctx.fill();
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-14, -10); ctx.quadraticCurveTo(-28, -16, -24, -32); ctx.stroke();
+    ctx.restore();
+  }
+
+  // What happened, played over the thing it is measured against.
+  function memory(ctx, i, f, now){
+    const fade = Math.min(1, f * 5, (1 - f) * 5);
+    ctx.save(); ctx.globalAlpha = Math.max(.15, fade); ctx.strokeStyle = C.lamp; ctx.fillStyle = C.lamp; ctx.lineWidth = 2.5;
+    switch (PARTS[i].id){
+      case 'lamp': {
+        const sw = .22 * Math.sin(now * 2.2), ax = LAMP.arm[0] - 16, ay = LAMP.arm[1];
+        const fx = ax + 70 * Math.sin(sw), fy = ay + 70 * Math.cos(sw);
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(fx, fy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(fx - 5, fy); ctx.lineTo(fx - 7, fy + 34); ctx.moveTo(fx + 5, fy); ctx.lineTo(fx + 7, fy + 34); ctx.stroke();
+        ctx.setLineDash([4, 6]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(fx, fy + 38); ctx.lineTo(fx, GROUND); ctx.stroke(); ctx.setLineDash([]);
+        break;
+      }
+      case 'festoon': {
+        const a = [LAMP.arm[0], LAMP.arm[1]], b = [RAIL.x0 - 30, RAIL.top];
+        for (let k = 0; k < 9; k++){
+          const t = (k + .5) / 9, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t + 26 * Math.sin(Math.PI * t);
+          ctx.beginPath(); ctx.moveTo(x - 8, y); ctx.lineTo(x + 8, y); ctx.lineTo(x, y + 20); ctx.closePath(); ctx.fill();
+        }
+        for (let k = 0; k < 5; k++){
+          const x = -60 + f * 860 - k * 46;
+          if (x > 0 && x < 1000) SC.figure(ctx, C.lamp, x, GROUND, .9, .08 * Math.sin(now * 6 + k));
+          if (k === 2 && x > 0){ ctx.beginPath(); ctx.moveTo(x - 7, GROUND - 50); ctx.lineTo(x - 7, GROUND - 60); ctx.lineTo(x - 2, GROUND - 54); ctx.lineTo(x + 2, GROUND - 62); ctx.lineTo(x + 7, GROUND - 54); ctx.lineTo(x + 7, GROUND - 50); ctx.fill(); }
+        }
+        break;
+      }
+      case 'rail': {
+        // Dawn: a little light coming up behind the street, fading out towards the rooftops.
+        const dawn = ctx.createLinearGradient(0, GROUND, 0, 200);
+        dawn.addColorStop(0, C.lamp); dawn.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.globalAlpha = .16 * fade; ctx.fillStyle = dawn; ctx.fillRect(0, 200, W, GROUND - 200); ctx.globalAlpha = Math.max(.15, fade); ctx.fillStyle = C.lamp;
+        const u = Math.max(0, Math.min(1, (f - .2) / .6)), x = 610 + 160 * u, y = RAIL.top - 10 + (GROUND - RAIL.top + 10) * u * u - 60 * Math.sin(Math.PI * u);
+        SC.figure(ctx, C.lamp, x, y + 12, 1, -1.2 * u);
+        break;
+      }
+      case 'gutter': {
+        const u = Math.min(1, f / .7), x = GUTTER[0][0] + 30 + (GUTTER[1][0] - 90 - GUTTER[0][0]) * u;
+        const y = GUTTER[0][1] + (GUTTER[1][1] - GUTTER[0][1]) * (x - GUTTER[0][0]) / (GUTTER[1][0] - GUTTER[0][0]) - 2;
+        const drop = Math.max(0, (f - .7) / .3);
+        ctx.globalAlpha = Math.max(.15, fade) * (1 - drop * .8);
+        cat(ctx, x + 30 * drop, y + 80 * drop * drop, Math.atan2(GUTTER[1][1] - GUTTER[0][1], GUTTER[1][0] - GUTTER[0][0]) + drop * 1.2);
+        break;
+      }
+      case 'range': {
+        const bx = 1560 - 60 * Math.min(1, f * 3);
+        ctx.beginPath(); ctx.moveTo(bx - 50, SEA - 6); ctx.lineTo(bx + 50, SEA - 6); ctx.lineTo(bx + 36, SEA + 10); ctx.lineTo(bx - 36, SEA + 10); ctx.closePath(); ctx.fill();
+        ctx.fillRect(bx - 12, SEA - 26, 24, 20); ctx.fillRect(bx + 4, SEA - 22, 40, 5);
+        const u = Math.max(0, Math.min(1, (f - .3) / .42));
+        if (u > 0 && u < 1){
+          const p0 = [bx + 40, SEA - 20], c = [1170, 300], p2 = mid(), q = (k, t) => (1 - t) * (1 - t) * p0[k] + 2 * (1 - t) * t * c[k] + t * t * p2[k];
+          ctx.beginPath(); ctx.arc(q(0, u), q(1, u), 6, 0, 6.29); ctx.fill();
+        }
+        if (f > .72 && f < .9){ const m = mid(); ctx.beginPath(); ctx.arc(m[0], m[1], 26 + 80 * (f - .72), 0, 6.29); ctx.globalAlpha = .5 * fade; ctx.fill(); }
+        break;
+      }
+      case 'net': {
+        for (let k = 0; k < 3; k++){
+          const x = 1080 + k * 60;
+          SC.figure(ctx, C.lamp, x, SEA - 22, .85, .1 * Math.sin(now * 1.5 + k * 2));
+          ctx.beginPath(); ctx.moveTo(x + 9, SEA - 50); ctx.lineTo(NET[0] + 20 + k * 50, NET[1] + NET[3] - 30); ctx.lineWidth = 1; ctx.stroke(); ctx.lineWidth = 2.5;
+        }
+        ctx.font = '400 24px ' + C.display; ctx.textAlign = 'center'; ctx.fillText('……那艘炮艇，那一年……', 1150, 600);
+        break;
+      }
+    }
+    ctx.restore();
+  }
+
+  // Once every memory is in: the old men's story runs back up the street to the lamp.
+  function loop(ctx, now){
+    ctx.save(); ctx.strokeStyle = C.lamp; ctx.lineWidth = 2; ctx.setLineDash([8, 8]); ctx.lineDashOffset = -now * 20;
+    ctx.globalAlpha = .7; ctx.beginPath(); ctx.moveTo(1110, SEA - 30); ctx.bezierCurveTo(1000, 950, 500, 960, LAMP.x + 6, GROUND - 4); ctx.stroke(); ctx.restore();
+  }
+
+  function draw(ctx){
+    step();
+    const now = clock(), k = count();
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // The city soaks its past up like a sponge and swells a little with each memory.
+    const s = 1 + GROW * (k + (playing ? phaseOf(now) : 0));
+    ctx.save(); ctx.translate(800, GROUND); ctx.scale(s, s); ctx.translate(-800, -GROUND);
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, GROUND); ctx.lineTo(1040, GROUND); ctx.moveTo(1040, SEA); ctx.lineTo(1400, SEA); ctx.stroke();
+    ctx.save(); ctx.strokeStyle = C.dim; ctx.lineWidth = 1; ctx.beginPath();
+    for (let y = SEA + 18; y < H; y += 22) for (let x = 1050 + (y % 44); x < W; x += 70){ ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 10, y - 5, x + 20, y); }
+    ctx.stroke(); ctx.restore();
+    dims(ctx, now);
+    street(ctx); harbour(ctx);
+    if (soaked[0]) marks(ctx, 0, along([LAMP.x, GROUND - 20], [LAMP.x, LAMP.top + 20], 6));
+    if (soaked[1]) marks(ctx, 1, along(LAMP.arm, [RAIL.x0 - 30, RAIL.top], 4, -6));
+    if (soaked[2]) marks(ctx, 2, along([RAIL.x0 - 20, RAIL.top + 6], [RAIL.x1, RAIL.top + 6], 5));
+    if (soaked[3]) marks(ctx, 3, along([GUTTER[0][0] + 20, GUTTER[0][1] + 10], [GUTTER[0][0] + 120, GUTTER[0][1] + 21], 3));
+    if (soaked[4]) marks(ctx, 4, along([1470, 760], [1580, 742], 4, 12));
+    if (soaked[5]) marks(ctx, 5, along([1060, SEA - 11], [1320, SEA - 11], 6));
+    if (playing) memory(ctx, playing.i, phaseOf(now), now);
+    if (k === N) loop(ctx, now);
+    ctx.restore();
+  }
+
+  function ui(){
+    const k = count(), btn = document.getElementById('next');
+    btn.disabled = !!playing || k === N;
+    document.getElementById('meter').textContent = '吸进去的过去 ' + k + ' / ' + N + (playing ? ' · 正在吸进：' + PARTS[playing.i].name : '');
+    document.getElementById('moral').textContent = k === N
+      ? '扎伊拉自己不讲这些。它只是把它们留在身上：栏杆上一道划痕，檐沟边一个凹口，码头木板上一圈涡纹，像手心的纹路。你还是量得出每一段有多长，只是量不出哪一道是哪件事。'
+      : k ? '吸进去的那一段，尺寸淡了，东西身上多了几道痕。下一段在亮着的那个数字上。'
+      : '这些数字都对，可它们什么也没说。点一个尺寸，看看它和什么事是同一件事。';
+  }
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  const canvas = document.getElementById('c');
+  function worldXY(e){
+    const r = canvas.getBoundingClientRect(), s = 1 + GROW * count();
+    const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+    return [800 + (x - 800) / s, GROUND + (y - GROUND) / s];   // undo the swelling
+  }
+  canvas.addEventListener('pointerdown', e => {
+    const [x, y] = worldXY(e);
+    if (playing){ caption('这一段还没吸完。'); return; }
+    for (let i = 0; i < N; i++){
+      const b = HIT[PARTS[i].id];
+      if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3]){
+        if (soaked[i]) caption(PARTS[i].name + '已经吸进去了，现在只剩几道痕。');
+        else remember(i);
+        return;
+      }
+    }
+  });
+
+  function reset(){
+    soaked = PARTS.map(() => false); playing = null; hintAt = 0;
+    caption('一条街，一个码头。每样东西都量过了。'); ui(); if (st) st.redraw();
+  }
+
+  let st = null;
+  reset();
+  st = SC.stage(canvas, W, H, draw);
+  // A memory finishes soaking in even with reduced motion, when nothing redraws on its own.
+  setInterval(() => { const before = playing; step(); if (reduce || before !== playing) st.redraw(); }, 250);
+  document.getElementById('next').addEventListener('click', () => { const i = nextIndex(); if (i >= 0) remember(i); });
+  document.getElementById('reset').addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>
