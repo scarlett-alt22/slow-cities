@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>艾尔西里亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row .label{font-size:13px;color:var(--dim);letter-spacing:.1em;margin-right:4px}
+.row button{padding:7px 13px;font-size:14px;display:inline-flex;gap:8px;align-items:center}
+.row button[aria-pressed="true"]{background:var(--lamp);color:var(--sky);font-weight:700}
+.swatch{display:inline-block;width:22px;height:4px;border-radius:2px;outline:1px solid var(--dim)}
+.stage canvas{cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与贸易 · 之四 · 读到的第 27 座</p>
+    <h1>艾尔西里亚</h1>
+    <p class="lede">在艾尔西里亚，两家人之间有了一种关系，就在两座房子的房角之间拉一根绳：亲缘是白的，交易是黑的，权威是灰的，代理是黑白相间的。先选一种绳，再点两座房子把它拉上。绳多到人从街上过不去的时候，居民就拆了房子搬走，绳子和撑绳的柱子留在原地。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="艾尔西里亚：平原上几座房子，房角之间拉着白、黑、灰的绳；远处的平原上立着从前几座艾尔西里亚留下的绳网"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="row" id="kinds" role="group" aria-label="拉哪一种绳"><span class="label">这根绳是</span></div>
+
+  <div class="controls">
+    <button id="year" type="button" class="primary">过一年</button>
+    <button id="reset" type="button">从第一座重来</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-07 23:34（心跳夜读），做于 2026-11-08 中午。四种颜色和四种关系的对应是书里的；哪两家是亲戚、谁替谁办事，是你点的，或者「过一年」时随机拉的（每座城的随机都一样，打开几次都一样）。「过不去」我是这样算的：数一数头顶上横着的绳，哪一段街上头顶有八根，就算走不过去了；书里没给数，八是我定的。远处平原上那些网，是你在这一页上丢下的每一座艾尔西里亚，按丢下的先后排。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./zaira.html">← 扎伊拉</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, GROUND = 900, HORIZON = 380, LIMIT = 8, DUR = 3.2, HOUSES = 7, PER_YEAR = 3;
+  const C = SC.palette();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => reduce ? 0 : performance.now() / 1000;
+
+  const KINDS = [
+    { id: 'blood',  name: '亲缘', color: C.ink,     say: (a, b) => '白绳：第 ' + a + ' 家和第 ' + b + ' 家是亲戚。' },
+    { id: 'trade',  name: '交易', color: '#05070d', say: (a, b) => '黑绳：第 ' + a + ' 家和第 ' + b + ' 家做买卖。' },
+    { id: 'rule',   name: '权威', color: '#8d8a9c', say: (a, b) => '灰绳：第 ' + a + ' 家管着第 ' + b + ' 家。' },
+    { id: 'agency', name: '代理', color: 'mixed',   say: (a, b) => '黑白相间的绳：第 ' + a + ' 家替第 ' + b + ' 家办事。' }
+  ];
+
+  let city, ruins, kind = 0, picked = null, leaving = null;
+
+  // A city's houses come from its number, so the n-th Ersilia is the same every time.
+  function found(gen){
+    const rand = SC.rng(1972 + gen * 37), houses = [];
+    let x = 150 + rand() * 40;
+    for (let i = 0; i < HOUSES; i++){
+      const w = 110 + rand() * 50, h = 210 + rand() * 160;
+      houses.push({ x: x + w / 2, w, h, roof: 30 + rand() * 30, walls: [0, 0] });
+      x += w + 52 + rand() * 40;
+    }
+    const k = (W - 150 - x + 52) / 2;   // centre the row
+    houses.forEach(hs => { hs.x += k; });
+    return { gen, houses, cords: [], rand: SC.rng(4021 + gen * 53) };
+  }
+
+  // Each cord hangs from the facing walls of its two houses. A wall's posts get taller the more
+  // cords they carry, so the space between the houses fills from the roofs down to head height.
+  function anchor(hs, side, n){
+    const x = hs.x + side * hs.w / 2, top = GROUND - hs.h - 26;
+    return [x, top + (n % 5) * (hs.h - 40) / 5 + Math.floor(n / 5) * 9];
+  }
+  function tie(i, j, kd){
+    if (leaving || i === j) return null;
+    if (i > j) [i, j] = [j, i];
+    if (city.cords.some(c => c.i === i && c.j === j && c.kind === kd)) return 'dup';
+    const A = city.houses[i], B = city.houses[j];
+    const a = anchor(A, 1, A.walls[1]++), b = anchor(B, -1, B.walls[0]++);
+    const cord = { i, j, kind: kd, a, b, sag: 16 + Math.abs(b[0] - a[0]) * .05 };
+    city.cords.push(cord);
+    return cord;
+  }
+
+  // How many cords hang over the most crowded stretch of street.
+  function crowd(c){
+    c = c || city;
+    const first = c.houses[0], last = c.houses[c.houses.length - 1];
+    let most = 0;
+    for (let x = first.x; x <= last.x; x += 8){
+      let n = 0;
+      for (const cd of c.cords) if (x > cd.a[0] && x < cd.b[0]) n++;
+      if (n > most) most = n;
+    }
+    return most;
+  }
+
+  function slot(n){
+    const row = Math.floor(n / 5), col = n % 5, s = .22 * Math.pow(.72, row);
+    return { x: 160 + col * 320 + (row % 2) * 160, y: HORIZON + 50 - row * 14, s };
+  }
+
+  function leave(){
+    if (leaving) return;
+    leaving = { t0: clock(), to: slot(ruins.length) };
+    picked = null;
+    caption('最挤的那段街上横着 ' + crowd() + ' 根绳，人已经过不去了。他们把房子拆了，搬走。');
+    ui();
+    if (reduce) step(true);
+  }
+  function progress(){ return leaving ? (reduce ? 1 : Math.min(1, (clock() - leaving.t0) / DUR)) : 0; }
+  function step(force){
+    if (!leaving || (!force && progress() < 1)) return false;
+    ruins.push({ houses: city.houses, cords: city.cords, posts: posts(city), at: leaving.to, gen: city.gen });
+    city = found(city.gen + 1);
+    leaving = null;
+    caption('他们在别处造起第 ' + (city.gen + 1) + ' 座艾尔西里亚。');
+    ui();
+    return true;
+  }
+
+  function posts(c){
+    const out = [];
+    c.cords.forEach(cd => {
+      [[cd.i, 1, cd.a], [cd.j, -1, cd.b]].forEach(([h, side, p]) => {
+        const k = h + ':' + side, o = out.find(q => q.k === k);
+        if (o) o.top = Math.min(o.top, p[1] - 12); else out.push({ k, x: p[0], top: p[1] - 12 });
+      });
+    });
+    return out;
+  }
+
+  function year(){
+    if (leaving) return;
+    let made = 0, guard = 0;
+    while (made < PER_YEAR && guard++ < 50){
+      const i = Math.floor(city.rand() * HOUSES), j = Math.floor(city.rand() * HOUSES), kd = Math.floor(city.rand() * KINDS.length);
+      const r = tie(i, j, kd);
+      if (r && r !== 'dup'){ made++; if (crowd() >= LIMIT) break; }
+    }
+    if (crowd() >= LIMIT) leave();
+    else { caption('又过了一年，多了 ' + made + ' 根绳。'); ui(); st.redraw(); }
+  }
+
+  // ---- drawing ----
+  function cordPath(ctx, cd){
+    const mx = (cd.a[0] + cd.b[0]) / 2, my = (cd.a[1] + cd.b[1]) / 2 + cd.sag * 2;
+    ctx.beginPath(); ctx.moveTo(cd.a[0], cd.a[1]); ctx.quadraticCurveTo(mx, my, cd.b[0], cd.b[1]);
+  }
+  function drawCord(ctx, cd, w){
+    const k = KINDS[cd.kind];
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = C.chalk; ctx.globalAlpha *= .3; ctx.lineWidth = w + 2.5; cordPath(ctx, cd); ctx.stroke(); ctx.globalAlpha /= .3;
+    if (k.color === 'mixed'){
+      ctx.lineWidth = w; ctx.strokeStyle = C.ink; cordPath(ctx, cd); ctx.stroke();
+      ctx.setLineDash([14, 14]); ctx.strokeStyle = '#05070d'; cordPath(ctx, cd); ctx.stroke(); ctx.setLineDash([]);
+    } else { ctx.lineWidth = w; ctx.strokeStyle = k.color; cordPath(ctx, cd); ctx.stroke(); }
+  }
+  function drawWeb(ctx, cords, ps, w){
+    ctx.strokeStyle = C.dim; ctx.lineWidth = w * 1.6;
+    for (const p of ps){ ctx.beginPath(); ctx.moveTo(p.x, GROUND); ctx.lineTo(p.x, p.top); ctx.stroke(); }
+    for (const cd of cords) drawCord(ctx, cd, w);
+  }
+  function house(ctx, hs, i){
+    const l = hs.x - hs.w / 2, t = GROUND - hs.h;
+    ctx.fillStyle = '#1f2440'; ctx.strokeStyle = picked === i ? C.lamp : C.dim; ctx.lineWidth = picked === i ? 5 : 2;
+    ctx.beginPath(); ctx.moveTo(l, GROUND); ctx.lineTo(l, t); ctx.lineTo(hs.x, t - hs.roof); ctx.lineTo(l + hs.w, t); ctx.lineTo(l + hs.w, GROUND); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = C.lamp; ctx.globalAlpha *= .75;
+    ctx.fillRect(hs.x - 14, t + 34, 28, 30);
+    ctx.globalAlpha /= .75;
+    ctx.fillStyle = C.dim; ctx.font = '400 38px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), hs.x, GROUND - 40);
+  }
+
+  function draw(ctx){
+    step();
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // The plain below the hills: old Ersilias stand on it.
+    ctx.fillStyle = C.rule; ctx.globalAlpha = .35; ctx.fillRect(0, HORIZON, W, H - HORIZON); ctx.globalAlpha = 1;
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, HORIZON); ctx.lineTo(W, HORIZON); ctx.stroke();
+    ruins.forEach(r => {
+      ctx.save(); ctx.translate(r.at.x, r.at.y); ctx.scale(r.at.s, r.at.s); ctx.translate(-W / 2, -GROUND);
+      ctx.globalAlpha = .7; drawWeb(ctx, r.cords, r.posts, 3 / r.at.s * .6); ctx.restore();
+    });
+
+    // The present city.
+    const p = progress(), lift = Math.min(1, p / .45), shrink = Math.max(0, (p - .5) / .5);
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(40, GROUND); ctx.lineTo(W - 40, GROUND); ctx.stroke();
+    ctx.save();
+    if (leaving && shrink > 0){
+      const e = shrink * shrink * (3 - 2 * shrink), to = leaving.to, s = 1 + (to.s - 1) * e;
+      ctx.translate(W / 2 + (to.x - W / 2) * e, GROUND + (to.y - GROUND) * e); ctx.scale(s, s); ctx.translate(-W / 2, -GROUND);
+    }
+    if (lift < 1){
+      ctx.save(); ctx.globalAlpha = 1 - lift; ctx.translate(0, -lift * 260);
+      city.houses.forEach((hs, i) => house(ctx, hs, i));
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    drawWeb(ctx, city.cords, posts(city), 3);
+    ctx.restore();
+    if (!leaving && city.cords.length === 0 && !ruins.length){
+      SC.annotate(ctx, [{ at: [city.houses[1].x, GROUND - city.houses[1].h - 40], text: '先点一家，再点另一家', lx: W / 2, ly: 150 }], { size: 30 });
+    }
+  }
+
+  // ---- input ----
+  function houseAt(x, y){
+    return city.houses.findIndex(hs => x >= hs.x - hs.w / 2 - 10 && x <= hs.x + hs.w / 2 + 10 && y >= GROUND - hs.h - hs.roof - 10 && y <= GROUND + 10);
+  }
+  function tap(i){
+    if (leaving){ caption('他们正在搬。'); return; }
+    if (i < 0){ picked = null; st.redraw(); return; }
+    if (picked === null){ picked = i; caption('从第 ' + (i + 1) + ' 家拉一根' + KINDS[kind].name + '的绳，拉到哪一家？'); st.redraw(); return; }
+    if (picked === i){ picked = null; caption('不拉了。'); st.redraw(); return; }
+    const r = tie(picked, i, kind), a = Math.min(picked, i) + 1, b = Math.max(picked, i) + 1;
+    picked = null;
+    if (r === 'dup') caption('第 ' + a + ' 家和第 ' + b + ' 家之间已经有这种绳了。');
+    else { caption(KINDS[kind].say(a, b)); if (crowd() >= LIMIT){ leave(); return; } }
+    ui(); st.redraw();
+  }
+
+  const MORALS = [
+    '绳越拉越多，房子之间能走的地方越来越少。',
+    '他们在别处又造起一座艾尔西里亚，织一张差不多的网，想让它比上一张更复杂，也更规整。然后又丢下它，连人带房子搬到更远的地方。',
+    '在艾尔西里亚的地界上走，会遇见一座座丢下的城：墙没有留下，房子没有留下，死人的骨头也被风吹走了，只剩一张张关系的网，在找一个形状。'
+  ];
+  function ui(){
+    document.getElementById('meter').textContent = '这一座的绳 ' + city.cords.length + ' 根 · 最挤处头顶 ' + crowd() + ' / ' + LIMIT + ' 根 · 平原上的旧艾尔西里亚 ' + ruins.length + ' 座';
+    document.getElementById('moral').textContent = MORALS[Math.min(2, ruins.length)];
+    document.getElementById('year').disabled = !!leaving;
+    document.querySelectorAll('#kinds button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.kind === kind)));
+  }
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  function reset(){ city = found(0); ruins = []; picked = null; leaving = null; caption('第 1 座艾尔西里亚，还没有一根绳。'); ui(); if (st) st.redraw(); }
+
+  const row = document.getElementById('kinds');
+  KINDS.forEach((k, n) => {
+    const b = document.createElement('button'); b.type = 'button'; b.dataset.kind = String(n);
+    const sw = document.createElement('span'); sw.className = 'swatch';
+    sw.style.background = k.color === 'mixed' ? 'repeating-linear-gradient(90deg,' + C.ink + ' 0 5px,#05070d 5px 10px)' : k.color;
+    b.appendChild(sw); b.appendChild(document.createTextNode(k.name));
+    b.addEventListener('click', () => { kind = n; ui(); });
+    row.appendChild(b);
+  });
+  let st = null;
+  reset();
+  const canvas = document.getElementById('c');
+  st = SC.stage(canvas, W, H, draw);
+  canvas.addEventListener('pointerdown', e => {
+    const r = canvas.getBoundingClientRect();
+    tap(houseAt((e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height));
+  });
+  document.getElementById('year').addEventListener('click', year);
+  document.getElementById('reset').addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>
