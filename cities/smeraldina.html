@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>斯麦拉尔迪那 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row .label{font-size:13px;color:var(--dim);letter-spacing:.1em;margin-right:4px}
+.row button{padding:7px 13px;font-size:14px;display:inline-flex;gap:8px;align-items:center}
+.row button[aria-pressed="true"]{background:var(--lamp);color:var(--sky);font-weight:700}
+.row button[aria-pressed="true"] .swatch{outline:2px solid var(--sky)}
+.key{display:inline-flex;gap:8px;align-items:center;font-size:14px;color:var(--dim);margin-right:10px}
+.swatch{display:inline-block;width:22px;height:4px;border-radius:2px}
+.stage canvas{cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与贸易 · 之五 · 读到的第 31 座</p>
+    <h1>斯麦拉尔迪那</h1>
+    <p class="lede">斯麦拉尔迪那是座水城，运河和街道交织在一起，从一处到另一处，总可以走水路，也可以走陆路。两点之间最短的不是直线，是一条分了很多叉的曲线，所以居民不用天天走同一条路。点一个地方，再点另一个，看今天怎么走；然后让他明天再走一趟。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="斯麦拉尔迪那的地图：一格格屋顶之间，蓝色的运河和浅色的街道交织；你点的两处之间画出今天走的路，屋顶上方有燕子飞过"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="row" aria-hidden="true">
+    <span class="key"><span class="swatch" id="sw-land"></span>陆路</span>
+    <span class="key"><span class="swatch" id="sw-water"></span>水路</span>
+  </div>
+
+  <div class="row" role="group" aria-label="别的路也画上">
+    <span class="label">也画上</span>
+    <button id="roof" type="button" aria-pressed="false"><span class="swatch" id="sw-roof"></span>屋顶上的</button>
+    <button id="under" type="button" aria-pressed="false"><span class="swatch" id="sw-under"></span>下水道里的</button>
+  </div>
+
+  <div class="controls">
+    <button id="tomorrow" type="button" class="primary">明天再走一趟</button>
+    <button id="swallow" type="button">把燕子的路描下来</button>
+    <button id="reset" type="button">换两个地方</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-09 06:27（心跳夜读），做于同一天早上。书里说这座城的地图应该用不同的颜色标出所有固体与液体、明处与暗处的路，没说是哪几种颜色，蓝、白、暖黄、紫是我挑的。街巷和运河的摆法是我定的：一张固定的格子，哪段是河、哪段是街、哪段河边还有路，用一个固定的随机数排好，每次打开都一样。「每天走法不同」是这样做的：每天给每段路添一点随机的远近，再找最短的走法；如果跟走过的哪天一样，就重找，最多三十次。书里只说他们每天能走不同的路，没说怎么挑。屋顶上那条是猫、小偷和地下情侣走的，每一段中间断开，算是从一个屋顶跳到另一个；下水道那条是老鼠、阴谋家和走私者的。这两条都是朝目的地随手挪出来的，不是最短路。燕子是我画的抛物线，描下来的那一段一秒半就淡了；减少动效时，干脆描不上。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./ersilia.html">← 艾尔西里亚</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, COLS = 8, ROWS = 5, DUR = 2.4, SWITCH = 40, TRIES = 30, FADE = 1.5;
+  const C = SC.palette();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => reduce ? 0 : performance.now() / 1000;
+  const CANAL = '#2c5d85', WATER = '#7cc4f0', UNDER = '#a68bd0', MODES = ['land', 'water'];
+
+  // The map is fixed: the same streets and canals every time the page is opened.
+  const r0 = SC.rng(1974), nodes = [], edges = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++)
+    nodes.push({ c, r, x: 150 + c * 186 + (r0() - .5) * 46, y: 150 + r * 175 + (r0() - .5) * 46 });
+  const id = (c, r) => r * COLS + c;
+  function link(a, b){ const u = r0(); edges.push({ a, b, type: u < .32 ? 'water' : u < .72 ? 'street' : 'both' }); }
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++){
+    if (c < COLS - 1) link(id(c, r), id(c + 1, r));
+    if (r < ROWS - 1) link(id(c, r), id(c, r + 1));
+  }
+  const adj = nodes.map(() => []);
+  edges.forEach((e, k) => { adj[e.a].push(k); adj[e.b].push(k); });
+  const other = (e, n) => e.a === n ? e.b : e.a;
+  const len = e => Math.hypot(nodes[e.a].x - nodes[e.b].x, nodes[e.a].y - nodes[e.b].y);
+  const can = (e, m) => e.type === 'both' || (m === 'land' ? e.type === 'street' : e.type === 'water');
+
+  // Today's way from A to B: every stretch of street or canal feels a little longer or shorter
+  // today, and he takes the shortest way under that. Changing between boat and foot costs SWITCH.
+  function route(A, B, rnd){
+    const noise = edges.map(() => [rnd() * 1.1, rnd() * 1.1]);
+    const N = nodes.length * 2, dist = new Array(N).fill(Infinity), prev = new Array(N).fill(null), done = new Array(N).fill(false);
+    dist[A * 2] = 0; dist[A * 2 + 1] = 0;
+    for (;;){
+      let u = -1;
+      for (let i = 0; i < N; i++) if (!done[i] && dist[i] < Infinity && (u < 0 || dist[i] < dist[u])) u = i;
+      if (u < 0) break;
+      done[u] = true;
+      const n = u >> 1, mi = u & 1, s = n * 2 + (1 - mi);
+      if (dist[u] + SWITCH < dist[s]){ dist[s] = dist[u] + SWITCH; prev[s] = { from: u, edge: -1 }; }
+      for (const k of adj[n]){
+        const e = edges[k];
+        if (!can(e, MODES[mi])) continue;
+        const v = other(e, n) * 2 + mi, d = dist[u] + len(e) * (1 + noise[k][mi]);
+        if (d < dist[v]){ dist[v] = d; prev[v] = { from: u, edge: k }; }
+      }
+    }
+    let at = dist[B * 2] <= dist[B * 2 + 1] ? B * 2 : B * 2 + 1;
+    const segs = [];
+    while (prev[at]){
+      const p = prev[at];
+      if (p.edge >= 0) segs.unshift({ from: p.from >> 1, to: at >> 1, mode: MODES[at & 1], edge: p.edge });
+      at = p.from;
+    }
+    return segs;
+  }
+  const keyOf = segs => segs.map(s => s.edge + s.mode[0]).join(',');
+
+  // Cats and thieves go roof to roof (diagonals too); rats and smugglers go under the streets.
+  // Neither takes the shortest way: each step just goes somewhere closer to where they are going.
+  function hop(A, B, diag, rnd){
+    const out = [A]; let cur = A, guard = 0;
+    const d = n => Math.hypot(nodes[n].x - nodes[B].x, nodes[n].y - nodes[B].y);
+    while (cur !== B && guard++ < 60){
+      const { c, r } = nodes[cur], next = [];
+      for (let dc = -1; dc <= 1; dc++) for (let dr = -1; dr <= 1; dr++){
+        if (!dc && !dr) continue;
+        if (!diag && dc && dr) continue;
+        const cc = c + dc, rr = r + dr;
+        if (cc < 0 || rr < 0 || cc >= COLS || rr >= ROWS) continue;
+        const n = id(cc, rr);
+        if (d(n) < d(cur)) next.push(n);
+      }
+      if (!next.length) break;
+      cur = next[Math.floor(rnd() * next.length)];
+      out.push(cur);
+    }
+    return out;
+  }
+
+  let A, B, walks, seen, rnd, roofOn, underOn, roofs, unders, traces, trace;
+
+  function walk(){
+    if (A == null || B == null) return null;
+    let segs, key, tries = 0;
+    do { segs = route(A, B, rnd); key = keyOf(segs); } while (seen.has(key) && ++tries < TRIES);
+    const fresh = !seen.has(key);
+    seen.add(key);
+    const w = { segs, key, fresh, t0: clock() };
+    walks.push(w);
+    roofs = hop(A, B, true, rnd); unders = hop(A, B, false, rnd);
+    const water = segs.filter(s => s.mode === 'water').length;
+    let turns = 0; for (let i = 1; i < segs.length; i++) if (segs[i].mode !== segs[i - 1].mode) turns++;
+    const n = walks.length;
+    caption(n === 1
+      ? '第 1 天：' + segs.length + ' 段路，水上 ' + water + ' 段、街上 ' + (segs.length - water) + ' 段，' + (turns ? '上下船 ' + turns + ' 次。' : '一次也没换。')
+      : fresh ? '第 ' + n + ' 天：又是一条没走过的路（水上 ' + water + ' 段、街上 ' + (segs.length - water) + ' 段）。'
+              : '第 ' + n + ' 天：这两处之间能走的都走过了，今天这条跟以前哪天一样。');
+    ui(); if (st) st.redraw();
+    return w;
+  }
+
+  function tap(n){
+    if (n < 0) return;
+    if (A == null || B != null){ A = n; B = null; walks = []; seen = new Set(); caption('从这里出发，去哪儿？'); ui(); st.redraw(); return; }
+    if (n === A){ A = null; caption('不走了。'); ui(); st.redraw(); return; }
+    B = n; rnd = SC.rng(9000 + A * 101 + B * 7);
+    walk();
+  }
+
+  function swallowAt(i, t){
+    const b = BIRDS[i], u = ((t / b.p + b.ph) % 1 + 1) % 1;
+    return [b.x0 + (b.x1 - b.x0) * u, b.y0 + (b.y1 - b.y0) * u - 4 * b.h * u * (1 - u)];
+  }
+  const BIRDS = [
+    { p: 7, ph: 0, x0: -60, x1: W + 60, y0: 640, y1: 300, h: 380 },
+    { p: 9, ph: .45, x0: W + 60, x1: -60, y0: 520, y1: 760, h: 420 },
+    { p: 11, ph: .2, x0: 200, x1: 1400, y0: 1060, y1: -60, h: 300 }
+  ];
+  function markSwallow(){
+    traces++;
+    if (reduce){ trace = null; caption('想描下燕子的路：它在空气里，没有地方落笔。'); ui(); st.redraw(); return; }
+    const t = clock(), pts = [];
+    for (let k = 0; k <= 40; k++) pts.push(swallowAt(0, t - 2 + k * .05));
+    trace = { pts, t0: t };
+    caption('描下了一段。再看，它已经不在那条线上了。');
+    ui(); st.redraw();
+  }
+
+  // ---- drawing ----
+  function off(s){
+    const e = edges[s.edge];
+    if (e.type !== 'both') return [0, 0];
+    const a = nodes[e.a], b = nodes[e.b], L = Math.hypot(b.x - a.x, b.y - a.y), k = s.mode === 'water' ? 13 : -13;
+    return [-(b.y - a.y) / L * k, (b.x - a.x) / L * k];
+  }
+  function drawWalk(ctx, w, alpha, p){
+    let total = 0; w.segs.forEach(s => { total += len(edges[s.edge]); });
+    let left = total * p;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const s of w.segs){
+      if (left <= 0) break;
+      const a = nodes[s.from], b = nodes[s.to], o = off(s), L = len(edges[s.edge]), f = Math.min(1, left / L);
+      left -= L;
+      ctx.globalAlpha = alpha; ctx.strokeStyle = s.mode === 'water' ? WATER : C.ink; ctx.lineWidth = s.mode === 'water' ? 9 : 7;
+      ctx.beginPath(); ctx.moveTo(a.x + o[0], a.y + o[1]); ctx.lineTo(a.x + o[0] + (b.x - a.x) * f, a.y + o[1] + (b.y - a.y) * f); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  function drawHops(ctx, path, color, dash, gap, dx){
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.setLineDash(dash);
+    for (let i = 1; i < path.length; i++){
+      const a = nodes[path[i - 1]], b = nodes[path[i]];
+      ctx.beginPath();
+      ctx.moveTo(a.x + dx + (b.x - a.x) * gap, a.y + dx + (b.y - a.y) * gap);
+      ctx.lineTo(a.x + dx + (b.x - a.x) * (1 - gap), a.y + dx + (b.y - a.y) * (1 - gap));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  function bird(ctx, x, y){
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x - 16, y - 7); ctx.quadraticCurveTo(x - 6, y - 6, x, y + 2); ctx.quadraticCurveTo(x + 6, y - 6, x + 16, y - 7); ctx.stroke();
+  }
+
+  function draw(ctx){
+    const t = clock();
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // Roofs: one block in every cell between the streets and canals.
+    ctx.fillStyle = '#1f2440';
+    for (let r = 0; r < ROWS - 1; r++) for (let c = 0; c < COLS - 1; c++){
+      const p = [nodes[id(c, r)], nodes[id(c + 1, r)], nodes[id(c + 1, r + 1)], nodes[id(c, r + 1)]];
+      const cx = p.reduce((s, q) => s + q.x, 0) / 4, cy = p.reduce((s, q) => s + q.y, 0) / 4;
+      ctx.beginPath(); p.forEach((q, i) => { const x = cx + (q.x - cx) * .62, y = cy + (q.y - cy) * .62; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.fill();
+    }
+    // Canals, then the streets beside or across them.
+    ctx.lineCap = 'round';
+    for (const e of edges){
+      const a = nodes[e.a], b = nodes[e.b];
+      if (e.type !== 'street'){ const o = off({ edge: edges.indexOf(e), mode: 'water' }); ctx.strokeStyle = CANAL; ctx.lineWidth = 22; ctx.beginPath(); ctx.moveTo(a.x + o[0], a.y + o[1]); ctx.lineTo(b.x + o[0], b.y + o[1]); ctx.stroke(); }
+      if (e.type !== 'water'){ const o = off({ edge: edges.indexOf(e), mode: 'land' }); ctx.strokeStyle = C.rule; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(a.x + o[0], a.y + o[1]); ctx.lineTo(b.x + o[0], b.y + o[1]); ctx.stroke(); }
+    }
+    ctx.fillStyle = C.dim;
+    for (const n of nodes){ ctx.fillRect(n.x - 9, n.y - 9, 18, 18); }
+
+    if (A == null && !walks.length){
+      SC.annotate(ctx, [{ at: [nodes[id(1, 1)].x, nodes[id(1, 1)].y], text: '点一个地方，再点另一个', lx: W / 2, ly: 60 }], { size: 30 });
+    }
+    walks.forEach((w, i) => {
+      const last = i === walks.length - 1;
+      const p = last ? (reduce ? 1 : Math.min(1, (t - w.t0) / DUR)) : 1;
+      drawWalk(ctx, w, last ? 1 : .22, p);
+    });
+    if (B != null && roofOn) drawHops(ctx, roofs, C.lamp, [16, 10], .2, -6);
+    if (B != null && underOn) drawHops(ctx, unders, UNDER, [2, 11], .05, 8);
+    [A, B].forEach((n, i) => {
+      if (n == null) return;
+      const q = nodes[n];
+      ctx.fillStyle = C.lamp; ctx.beginPath(); ctx.arc(q.x, q.y, 17, 0, 6.29); ctx.fill();
+      ctx.fillStyle = C.sky; ctx.font = '700 22px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(i ? '到' : '从', q.x, q.y + 1);
+    });
+    if (trace){
+      const a = 1 - (t - trace.t0) / FADE;
+      if (a <= 0) trace = null;
+      else { ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.setLineDash([6, 8]); ctx.beginPath(); trace.pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke(); ctx.restore(); }
+    }
+    BIRDS.forEach((b, i) => { const q = swallowAt(i, t); bird(ctx, q[0], q[1]); });
+  }
+
+  // ---- input ----
+  function nodeAt(x, y){
+    let best = -1, bd = 70;
+    nodes.forEach((n, i) => { const d = Math.hypot(n.x - x, n.y - y); if (d < bd){ bd = d; best = i; } });
+    return best;
+  }
+
+  const MORALS = [
+    '在斯麦拉尔迪那，两点之间最短的不是直线，是一条分了很多叉的曲线。',
+    '居民不用天天走同一条路，最平常、最安静的日子，也不会一模一样。',
+    '可这里也一样，秘密的、冒险的生活只能走别的路：屋顶上断断续续地跳，或者在下水道里穿城而过。',
+    '地图上最难标的是燕子的路：它们在屋顶上方划出看不见的弧线，从路上的每一点俯看整座城。'
+  ];
+  function ui(){
+    const n = walks ? walks.length : 0;
+    document.getElementById('meter').textContent = (B == null ? '还没选两个地方' : '这两处之间走了 ' + n + ' 天，' + seen.size + ' 条不同的路')
+      + ' · 燕子的路描了 ' + traces + ' 次';
+    document.getElementById('moral').textContent = MORALS[traces > 0 ? 3 : (roofOn || underOn) ? 2 : n >= 2 ? 1 : 0];
+    document.getElementById('tomorrow').disabled = B == null;
+    document.getElementById('roof').setAttribute('aria-pressed', String(roofOn));
+    document.getElementById('under').setAttribute('aria-pressed', String(underOn));
+  }
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  function reset(){ A = null; B = null; walks = []; seen = new Set(); roofs = []; unders = []; trace = null; caption('点一个地方，再点另一个。'); ui(); if (st) st.redraw(); }
+
+  [['sw-land', C.ink], ['sw-water', WATER], ['sw-roof', C.lamp], ['sw-under', UNDER]].forEach(([k, v]) => { document.getElementById(k).style.background = v; });
+  let st = null;
+  roofOn = false; underOn = false; traces = 0;
+  reset();
+  const canvas = document.getElementById('c');
+  st = SC.stage(canvas, W, H, draw);
+  canvas.addEventListener('pointerdown', e => {
+    const r = canvas.getBoundingClientRect();
+    tap(nodeAt((e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height));
+  });
+  document.getElementById('tomorrow').addEventListener('click', walk);
+  document.getElementById('roof').addEventListener('click', () => {
+    roofOn = !roofOn;
+    if (roofOn) caption('屋顶上：猫、小偷、地下情侣，从一个屋顶跳到另一个，走屋檐的水槽。');
+    ui(); st.redraw();
+  });
+  document.getElementById('under').addEventListener('click', () => {
+    underOn = !underOn;
+    if (underOn) caption('下水道里：老鼠成群地流窜，走私者抬着乳酪、违禁品和成桶的火药，从地洞里穿过城去。');
+    ui(); st.redraw();
+  });
+  document.getElementById('swallow').addEventListener('click', markSwallow);
+  document.getElementById('reset').addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>
