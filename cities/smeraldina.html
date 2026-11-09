@@ -165,8 +165,9 @@
     walk();
   }
 
+  const phase = (i, t) => ((t / BIRDS[i].p + BIRDS[i].ph) % 1 + 1) % 1;
   function swallowAt(i, t){
-    const b = BIRDS[i], u = ((t / b.p + b.ph) % 1 + 1) % 1;
+    const b = BIRDS[i], u = phase(i, t);
     return [b.x0 + (b.x1 - b.x0) * u, b.y0 + (b.y1 - b.y0) * u - 4 * b.h * u * (1 - u)];
   }
   const BIRDS = [
@@ -178,7 +179,12 @@
     traces++;
     if (reduce){ trace = null; caption('想描下燕子的路：它在空气里，没有地方落笔。'); ui(); st.redraw(); return; }
     const t = clock(), pts = [];
-    for (let k = 0; k <= 40; k++) pts.push(swallowAt(0, t - 2 + k * .05));
+    // When the swallow leaves one edge and comes back in at the other, lift the pen there.
+    for (let k = 0; k <= 40; k++){
+      const tk = t - 2 + k * .05;
+      if (k && phase(0, tk) < phase(0, tk - .05)) pts.push(null);
+      pts.push(swallowAt(0, tk));
+    }
     trace = { pts, t0: t };
     caption('描下了一段。再看，它已经不在那条线上了。');
     ui(); st.redraw();
@@ -261,7 +267,7 @@
     if (trace){
       const a = 1 - (t - trace.t0) / FADE;
       if (a <= 0) trace = null;
-      else { ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.setLineDash([6, 8]); ctx.beginPath(); trace.pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke(); ctx.restore(); }
+      else { ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.setLineDash([6, 8]); ctx.beginPath(); let pen = false; trace.pts.forEach(q => { if (!q){ pen = false; return; } pen ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); pen = true; }); ctx.stroke(); ctx.restore(); }
     }
     BIRDS.forEach((b, i) => { const q = swallowAt(i, t); bird(ctx, q[0], q[1]); });
   }
