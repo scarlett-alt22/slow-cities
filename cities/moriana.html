@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>莫里亚纳 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>.stage canvas{cursor:ew-resize;touch-action:pan-y}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与眼睛 · 之五 · 读到的第 36 座</p>
+    <h1>莫里亚纳</h1>
+    <p class="lede">过了河、翻过山口，就看见莫里亚纳：雪花石的城门在太阳底下透着光，珊瑚柱子，玻璃房子，水母形的吊灯下面游着穿银鳞衣裳的舞女。出过远门的人都知道，这样的城还有个背面。左右拖动画面，绕着它走。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" tabindex="0" role="img" aria-label="莫里亚纳的正面：玻璃房子、珊瑚柱子和水母形的吊灯。左右拖动或按方向键绕着它走；右上角是从天上往下看的样子"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="half" type="button">绕半圈</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-10 22:21（心跳夜读），做于 2026-11-11 凌晨。两面是同一张纸剪出来的：背面的轮廓就是正面的轮廓左右翻过来，所以两面的屋顶一一对得上，只是顺序反了；两幅画各自正着画，从哪面看都不是镜像。走到正侧面，整座城只剩一条竖线。右上角是从天上往下看，城一直是一条线，那个点是你。用按钮绕半圈，走到一半会在侧面停一下；如果系统设了减少动效，按钮会直接翻过去、看不到那条线，用方向键或者拖到侧面才看得到。正面和背面画的东西书里都有（铁皮、麻袋片、钉着钉子的木板、熏黑的管子、废铁罐、褪色的招牌、破藤椅框，还有那根绳子），怎么摆是我定的。读它之前刚读完第七部分开头的对话：马可说，垃圾堆和可汗的空中花园也许只隔着眼睑，分不清哪个在外面、哪个在里面。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./valdrada.html">← 瓦尔德拉达</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, GY = 840, CX = 800, HALF = 540;
+  const EDGE = 0.04;                          // below this |cos| the city is drawn as its edge: one line
+  const C = SC.palette();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => reduce ? 0 : performance.now() / 1000;
+
+  const MORALS = {
+    front: '人们说起莫里亚纳，说的都是这一面。可凡是出过远门的人都知道，这样的城一定还有另一面。',
+    flipped: '从这一面到那一面，城的样子翻来覆去，却没有厚度：像一张纸，两面各画了一幅画。',
+    edge: '两幅画背贴着背：拆不开，也永远没法面对面看对方一眼。'
+  };
+
+  // One sheet, cut once. Each piece of skyline is [x, width, height] in the sheet's own coordinates,
+  // seen from the front. The back is the same cut seen from behind: x runs the other way.
+  const segs = [];
+  (function cut(){
+    const rand = SC.rng(1110);
+    let x = -HALF;
+    while (x < HALF - 60){
+      const w = Math.min(HALF - x, 90 + rand() * 80);
+      segs.push({ x, w, h: 230 + rand() * 230, k: rand() });
+      x += w;
+    }
+    // The gate: the tallest piece, in the middle.
+    let mid = 0, best = Infinity;
+    segs.forEach((s, i) => { const d = Math.abs(s.x + s.w / 2); if (d < best){ best = d; mid = i; } });
+    segs[mid].h = 520; segs[mid].gate = true;
+  })();
+  const MAXH = Math.max(...segs.map(s => s.h));
+  // The outline of the sheet as a list of points, for one side.
+  function outline(back){
+    const pts = [[-HALF, GY]];
+    for (const s of segs){ pts.push([s.x, GY - s.h]); pts.push([s.x + s.w, GY - s.h]); }
+    pts.push([HALF, GY]);
+    return back ? pts.map(p => [-p[0], p[1]]) : pts;
+  }
+  const FRONT = outline(false), BACK = outline(true);
+  const box = (s, back) => back ? { x: -(s.x + s.w), w: s.w } : { x: s.x, w: s.w };
+
+  let theta, flips, lastFace, anim = null, sawEdge, everFlipped;
+  function init(){ theta = 0; flips = 0; lastFace = 'front'; sawEdge = false; everFlipped = false; }
+  const faceOf = t => Math.abs(Math.cos(t)) < EDGE ? 'edge' : (Math.cos(t) > 0 ? 'front' : 'back');
+
+  function path(ctx, pts){
+    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+  }
+
+  function drawFront(ctx, now){
+    path(ctx, FRONT);
+    ctx.fillStyle = C.skyHi; ctx.fill();
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 3; ctx.stroke();
+    for (const s of segs){
+      const top = GY - s.h;
+      if (s.gate){
+        // Alabaster gate with light coming through it, coral columns, a pediment of serpentine.
+        ctx.fillStyle = C.chalk; ctx.globalAlpha = .22;
+        ctx.beginPath(); ctx.moveTo(s.x + 40, GY); ctx.lineTo(s.x + 40, GY - 180); ctx.arc(s.x + s.w / 2, GY - 180, s.w / 2 - 40, Math.PI, 0); ctx.lineTo(s.x + s.w - 40, GY); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = C.lamp; ctx.lineWidth = 7;
+        for (const cx of [s.x + 22, s.x + s.w - 22]){ ctx.beginPath(); ctx.moveTo(cx, GY); ctx.lineTo(cx, GY - 300); ctx.stroke(); }
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(s.x + 6, GY - 300); ctx.lineTo(s.x + s.w / 2, GY - 380); ctx.lineTo(s.x + s.w - 6, GY - 300); ctx.closePath(); ctx.stroke();
+        ctx.lineWidth = 2; ctx.beginPath();
+        for (let i = 0; i <= 10; i++){ const px = s.x + 36 + i * (s.w - 72) / 10; ctx.lineTo(px, GY - 322 - (i % 2) * 10); }
+        ctx.stroke();
+        continue;
+      }
+      // A glass villa: floors you can see through, a jellyfish lamp, a dancer under it.
+      ctx.strokeStyle = C.chalk; ctx.lineWidth = 1.5; ctx.globalAlpha = .4;
+      for (let y = GY - 80; y > top + 30; y -= 80){ ctx.beginPath(); ctx.moveTo(s.x + 6, y); ctx.lineTo(s.x + s.w - 6, y); ctx.stroke(); }
+      for (let x = s.x + 40; x < s.x + s.w - 20; x += 40){ ctx.beginPath(); ctx.moveTo(x, top + 8); ctx.lineTo(x, GY); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+      const lx = s.x + s.w / 2, ly = top + 50 + Math.sin(now * .8 + s.k * 6) * 5;
+      ctx.fillStyle = C.lamp; ctx.globalAlpha = .85;
+      ctx.beginPath(); ctx.arc(lx, ly, 18, Math.PI, 0); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = .7; ctx.strokeStyle = C.lamp; ctx.lineWidth = 2;
+      for (let t = -2; t <= 2; t++){
+        ctx.beginPath(); ctx.moveTo(lx + t * 7, ly);
+        for (let j = 1; j <= 4; j++) ctx.lineTo(lx + t * 7 + Math.sin(now * 1.6 + j + t) * 3, ly + j * 9);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      SC.figure(ctx, C.chalk, lx + Math.sin(now * .5 + s.k * 9) * (s.w / 5), GY - 4, 1.4, Math.sin(now * 1.1 + s.k * 4) * .25);
+    }
+  }
+
+  function drawBack(ctx, now){
+    path(ctx, BACK);
+    ctx.fillStyle = C.rule; ctx.fill();
+    ctx.strokeStyle = C.dim; ctx.lineWidth = 3; ctx.stroke();
+    ctx.save(); path(ctx, BACK); ctx.clip();
+    segs.forEach((s, i) => {
+      const b = box(s, true), top = GY - s.h, kind = i % 5;
+      ctx.strokeStyle = C.dim; ctx.lineWidth = 2;
+      if (kind === 0 || s.gate){
+        // Rusted sheet iron, overlapping, with rivets.
+        for (let y = top; y < GY; y += 70){
+          ctx.strokeRect(b.x + 4, y + 4, b.w - 8, 66);
+          ctx.fillStyle = C.dim;
+          for (let x = b.x + 12; x < b.x + b.w - 8; x += 22){ ctx.fillRect(x, y + 10, 3, 3); ctx.fillRect(x, y + 62, 3, 3); }
+        }
+      } else if (kind === 1){
+        // Sacking.
+        ctx.lineWidth = 1; ctx.globalAlpha = .6;
+        for (let d = -s.h; d < b.w; d += 12){ ctx.beginPath(); ctx.moveTo(b.x + d, GY); ctx.lineTo(b.x + d + s.h, top); ctx.stroke(); }
+        for (let d = 0; d < b.w + s.h; d += 12){ ctx.beginPath(); ctx.moveTo(b.x + d, GY); ctx.lineTo(b.x + d - s.h, top); ctx.stroke(); }
+        ctx.globalAlpha = 1;
+      } else if (kind === 2){
+        // Planks with nails, and a faded sign nailed over them.
+        for (let y = top + 10; y < GY; y += 26){
+          ctx.beginPath(); ctx.moveTo(b.x, y); ctx.lineTo(b.x + b.w, y); ctx.stroke();
+          ctx.fillStyle = C.ink; ctx.fillRect(b.x + 10, y + 8, 3, 3); ctx.fillRect(b.x + b.w - 14, y + 8, 3, 3);
+        }
+        ctx.fillStyle = C.rule; ctx.fillRect(b.x + 14, top + 60, b.w - 28, 54); ctx.strokeRect(b.x + 14, top + 60, b.w - 28, 54);
+        ctx.globalAlpha = .35; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(b.x + 26, top + 80); ctx.lineTo(b.x + b.w - 40, top + 80); ctx.moveTo(b.x + 26, top + 96); ctx.lineTo(b.x + b.w / 2, top + 96); ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if (kind === 3){
+        // Pipes black with soot.
+        ctx.lineWidth = 9;
+        for (let x = b.x + 22; x < b.x + b.w - 10; x += 34){
+          ctx.beginPath(); ctx.moveTo(x, GY); ctx.lineTo(x, top + 40 + (x % 3) * 30); ctx.lineTo(x + 18, top + 22 + (x % 3) * 30); ctx.stroke();
+        }
+        ctx.fillStyle = C.sky; ctx.globalAlpha = .45;
+        ctx.beginPath(); ctx.arc(b.x + b.w / 2, top + 40, b.w / 2, 0, 6.29); ctx.fill(); ctx.globalAlpha = 1;
+      } else {
+        // A rotten beam, a rope hanging from it, and a cane chair with its seat gone.
+        const by = top + 40, rx = b.x + b.w / 2, sw = Math.sin(now * .7) * 3;
+        ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(b.x, by); ctx.lineTo(b.x + b.w, by + 6); ctx.stroke();
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(rx, by + 3); ctx.lineTo(rx + sw, by + 120); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(rx + sw, by + 136, 10, 16, 0, 0, 6.29); ctx.stroke();
+        const cx = b.x + 20, cy = GY;
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - 80); ctx.moveTo(cx + 46, cy); ctx.lineTo(cx + 46, cy - 40);
+        ctx.moveTo(cx, cy - 40); ctx.lineTo(cx + 46, cy - 40); ctx.moveTo(cx, cy - 80); ctx.lineTo(cx + 20, cy - 74); ctx.stroke();
+      }
+    });
+    // Tin cans heaped along the bottom.
+    ctx.strokeStyle = C.dim; ctx.lineWidth = 1.5;
+    const rand = SC.rng(7);
+    for (let x = -HALF + 8; x < HALF - 20; x += 16 + rand() * 18){
+      const h = 14 + rand() * 10, y = GY - h - (rand() < .3 ? 14 : 0);
+      ctx.strokeRect(x, y, 12, h);
+    }
+    ctx.restore();
+  }
+
+  // Seen from above: the city is always a line; the dot is you.
+  function drawMap(ctx){
+    const mx = 1450, my = 135, R = 70;
+    ctx.save();
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 2; ctx.setLineDash([6, 8]);
+    ctx.beginPath(); ctx.arc(mx, my, R, 0, 6.29); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(mx - 46, my); ctx.lineTo(mx + 46, my); ctx.stroke();
+    ctx.fillStyle = C.chalk;
+    ctx.beginPath(); ctx.arc(mx - R * Math.sin(theta), my + R * Math.cos(theta), 9, 0, 6.29); ctx.fill();
+    ctx.font = '400 22px ' + C.display; ctx.textAlign = 'center'; ctx.fillStyle = C.dim;
+    ctx.fillText('从天上看', mx, my + R + 34);
+    ctx.restore();
+  }
+
+  function step(now){
+    if (!anim) return;
+    const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+    const t = now - anim.t0;
+    if (t < .8) theta = anim.from + (anim.edge - anim.from) * ease(t / .8);
+    else if (t < 1.4) theta = anim.edge;
+    else if (t < 2.2) theta = anim.edge + (anim.to - anim.edge) * ease((t - 1.4) / .8);
+    else { theta = anim.to; const saw = anim.saw; anim = null; sync(); arrived(saw); return; }
+    sync();
+  }
+
+  function draw(ctx){
+    const now = clock();
+    step(now);
+    const g = ctx.createLinearGradient(0, 0, 0, GY); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // Far hills and the ground.
+    ctx.fillStyle = C.rule; ctx.globalAlpha = .5;
+    ctx.beginPath(); ctx.moveTo(0, GY); ctx.lineTo(0, 640); ctx.lineTo(260, 560); ctx.lineTo(520, 650); ctx.lineTo(980, 590); ctx.lineTo(1300, 660); ctx.lineTo(W, 600); ctx.lineTo(W, GY); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = C.sky; ctx.fillRect(0, GY, W, H - GY);
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, GY); ctx.lineTo(W, GY); ctx.stroke();
+
+    const c = Math.cos(theta), f = faceOf(theta);
+    if (f === 'edge'){
+      if (anim) anim.saw = true;
+      if (!sawEdge){ sawEdge = true; ui(); }
+      ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(CX, GY); ctx.lineTo(CX, GY - MAXH); ctx.stroke();
+    } else {
+      ctx.save(); ctx.translate(CX, 0); ctx.scale(Math.abs(c), 1);
+      if (f === 'front') drawFront(ctx, now); else drawBack(ctx, now);
+      ctx.restore();
+    }
+    drawMap(ctx);
+  }
+
+  function caption(t){ document.getElementById('caption').textContent = t; }
+  function ui(){
+    const f = faceOf(theta);
+    document.getElementById('meter').textContent = '看见的是：' + (f === 'edge' ? '一条线' : f === 'front' ? '正面' : '背面') + ' · 翻过 ' + flips + ' 次';
+    document.getElementById('moral').textContent = sawEdge ? MORALS.edge : everFlipped ? MORALS.flipped : MORALS.front;
+  }
+  // Called whenever theta changes: counts a flip only when the picture really changes sides.
+  function sync(){
+    const f = faceOf(theta);
+    if (f !== 'edge' && f !== lastFace){
+      flips++; everFlipped = true; lastFace = f;
+      if (!anim) caption(f === 'back' ? '绕到了背面：铁皮、麻袋片、熏黑的管子。正面那幅画就贴在它后头。' : '又绕回了正面。背面那幅画就贴在它后头。');
+    }
+    if (f === 'edge' && !anim) caption('站到了正侧面：整座城只剩一条线，没有厚度。');
+    ui();
+  }
+  function arrived(saw){
+    caption((lastFace === 'back' ? '绕过了半圈，到了背面。' : '又绕过半圈，回到正面。') + (saw ? '走到一半的时候，它只剩一条线。' : ''));
+    ui();
+  }
+  function turnBy(d){ anim = null; theta += d; sync(); st.redraw(); }
+
+  const canvas = document.getElementById('c');
+  let dragX = null;
+  function wx(e){ const r = canvas.getBoundingClientRect(); return (e.clientX - r.left) / r.width * W; }
+  canvas.addEventListener('pointerdown', e => {
+    dragX = wx(e); anim = null;
+    if (canvas.setPointerCapture && e.pointerId != null) canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (dragX == null) return;
+    const x = wx(e); turnBy((x - dragX) / 560 * Math.PI); dragX = x;
+  });
+  function drop(){
+    if (dragX == null) return;
+    dragX = null;
+    // The edge is narrow: let go near it and you are standing exactly side on.
+    if (Math.abs(Math.cos(theta)) < .2){ theta = Math.round(theta / Math.PI - .5) * Math.PI + Math.PI / 2; sync(); st.redraw(); }
+  }
+  canvas.addEventListener('pointerup', drop);
+  canvas.addEventListener('pointercancel', drop);
+  canvas.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft') turnBy(-Math.PI / 12);
+    else if (e.key === 'ArrowRight') turnBy(Math.PI / 12);
+    else return;
+    e.preventDefault && e.preventDefault();
+  });
+
+  init();
+  const st = SC.stage(canvas, W, H, draw);
+  caption('你从正面走近莫里亚纳。');
+  ui();
+  document.getElementById('half').addEventListener('click', () => {
+    const to = Math.round(theta / Math.PI) * Math.PI + Math.PI;
+    if (reduce){ anim = null; theta = to; sync(); arrived(false); st.redraw(); return; }
+    anim = { from: theta, edge: to - Math.PI / 2, to, t0: clock(), saw: false };
+    caption('你往旁边走……');
+  });
+})();
+</script>
+</body>
+</html>
