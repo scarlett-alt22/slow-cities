@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>阿尔嘉 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与死者 · 之四 · 读到的第 42 座</p>
+    <h1>阿尔嘉</h1>
+    <p class="lede">阿尔嘉跟别的城不一样的地方，是她没有空气，只有土。街道填满了土，房间里的泥一直塞到屋顶，屋顶上压着一层层岩石，像阴天的云。从上面看，什么也看不见；有人说她就在下面，你只能信。夜里把耳朵贴在地上，有时听得到一扇门砰地关上。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="一块荒地。地面以下只涂了一块土色，什么都没画"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="ear" type="button">把耳朵贴在地上</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral"></p>
+
+  <p class="read-on">读于 2026-11-12 00:23（心跳夜读），同一夜做的。按「把耳朵贴在地上」，天会黑下来，然后就是等：第一声最快也要十几秒，两声之间隔七到二十六秒。间隔是定死的随机数，不看你做了什么；站着的时候永远听不到。地面以下从头到尾只涂了一块土色，没有画任何东西，测试查的就是这一条。有一声很轻的闷响，浏览器不让出声就只有字；系统设了减少动效时，地上的石子不跳。旁边那个人和他那句话是书里的「有人说」，他站在哪儿是我定的。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./moriana.html">← 莫里亚纳</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: a city you cannot see, in the earth. All you have is someone's word that it is
+  // down there, and, at night, with your ear to the ground, sometimes a door slamming.
+  const W = 1600, H = 1000;
+  const UP = 640, DOWN = 210;        // where the ground starts: standing / ear on the ground
+  const BAND = 46;                   // pebbles and dry grass live within this much of the surface
+  const NIGHT = 6;                   // seconds for dusk to turn into night once you lie down
+  const GAP_MIN = 7, GAP_MAX = 26;   // seconds between one slam and the next
+  const SOIL = '#17131f', VEIL = '#070912';
+  const C = SC.palette();
+
+  const rs = SC.rng(42);
+  const PEBBLES = Array.from({ length: 54 }, () => ({ x: 30 + rs() * (W - 60), dy: 8 + rs() * (BAND - 18), r: 2 + rs() * 5, j: .3 + rs() * .7 }));
+  const TUFTS = Array.from({ length: 22 }, () => ({ x: 40 + rs() * (W - 80), h: 10 + rs() * 22, lean: (rs() - .5) * 14 }));
+  const rg = SC.rng(8);
+  const gap = () => GAP_MIN + rg() * (GAP_MAX - GAP_MIN);
+
+  let down = false, downAt = 0, movedAt = -1e9, base = 0, heard = 0;
+  let nextSlam = Infinity, lastSlam = -1e9, timer = null, ac = null;
+  const clock = () => performance.now() / 1000;
+  // Asked here, not read off the stage: the stage draws its first frame before it has been returned.
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let st = null;
+
+  const cam = now => {              // 0 = standing, 1 = ear on the ground
+    const k = still ? 1 : Math.min(1, (now - movedAt) / 1.2), e = k * k * (3 - 2 * k);
+    return down ? e : 1 - e;
+  };
+  const dark = now => down ? (still ? 1 : Math.min(1, (now - downAt) / NIGHT)) : 0;
+  const listened = now => base + (down ? now - downAt : 0);
+
+  function draw(ctx){
+    const now = clock(), c = cam(now), d = dark(now);
+    const hz = UP + (DOWN - UP) * c;
+
+    const g = ctx.createLinearGradient(0, 0, 0, hz); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, hz);
+    if (d > 0){ ctx.globalAlpha = .6 * d; ctx.fillStyle = VEIL; ctx.fillRect(0, 0, W, hz); ctx.globalAlpha = 1; }
+
+    // Above ground: you, and the one who says she is down there. They fade as your head goes down.
+    if (c < 1){
+      SC.annotate(ctx, [{ at: [980, hz - 140], text: '「她就在下面」', lx: 1130, ly: hz - 250 }], { alpha: 1 - c });
+      ctx.globalAlpha = 1 - c;
+      SC.figure(ctx, C.lamp, 640, hz, 3, 0);
+      SC.figure(ctx, C.chalk, 980, hz, 3, 0);
+      ctx.globalAlpha = 1;
+    }
+
+    // The earth. This rectangle is the only thing this page ever draws below the surface.
+    ctx.fillStyle = SOIL; ctx.fillRect(0, hz, W, H - hz);
+
+    // The surface: a line, dry grass, pebbles. A slam makes the pebbles jump a little.
+    const since = now - lastSlam;
+    const jump = !still && since >= 0 && since < .45 ? 5 * (1 - since / .45) : 0;
+    ctx.strokeStyle = C.dim; ctx.lineWidth = 2; ctx.globalAlpha = .7 - .35 * d;
+    ctx.beginPath(); ctx.moveTo(0, hz); ctx.lineTo(W, hz); ctx.stroke();
+    TUFTS.forEach(t => { ctx.beginPath(); ctx.moveTo(t.x, hz); ctx.lineTo(t.x + t.lean, hz - t.h); ctx.stroke(); });
+    ctx.fillStyle = C.dim; ctx.globalAlpha = .55 - .3 * d;
+    PEBBLES.forEach(p => { ctx.beginPath(); ctx.arc(p.x, hz + p.dy - jump * p.j, p.r, 0, 6.29); ctx.fill(); });
+    ctx.globalAlpha = 1;
+  }
+
+  function thud(){
+    try {
+      if (!ac) return;
+      if (ac.state === 'suspended' && ac.resume) ac.resume();
+      const t = ac.currentTime, o = ac.createOscillator(), v = ac.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(92, t); o.frequency.exponentialRampToValueAtTime(38, t + .22);
+      v.gain.setValueAtTime(.0001, t); v.gain.exponentialRampToValueAtTime(.22, t + .012); v.gain.exponentialRampToValueAtTime(.0001, t + .5);
+      o.connect(v); v.connect(ac.destination); o.start(t); o.stop(t + .55);
+    } catch (e) {}
+  }
+
+  const MORALS = {
+    start: '从上面看阿尔嘉，什么也看不见。有人说她就在下面，你只能信他。这地方是荒的。',
+    down: '她有的不是空气，是土。每道楼梯上面都压着另一道反过来的楼梯。里面的人还能不能走动，是不是得挤在虫子的洞和树根的缝里，没人知道。',
+    heard: '砰的一声，像是很深的地方有人关上了一扇门。然后又什么都没有了。',
+    upNone: '你贴着地听了一阵，什么也没听到。书里说的是「有时」。'
+  };
+
+  function ui(now){
+    const d = dark(now);
+    document.getElementById('ear').textContent = down ? '起来' : '把耳朵贴在地上';
+    const sec = Math.floor(listened(now));
+    document.getElementById('meter').textContent = sec === 0 && heard === 0 && !down ? '还没贴着地听过' : '贴着地听了 ' + sec + ' 秒 · 听到 ' + heard + ' 声';
+    document.getElementById('caption').textContent = !down ? '阿尔嘉，从上面看' : now - lastSlam < 2.5 ? '砰。' : d < 1 ? '天在黑下来' : '耳朵贴着地。一片黑';
+    let m = MORALS.start;
+    if (down) m = heard > 0 ? MORALS.heard : MORALS.down;
+    else if (heard > 0) m = '站起来，地还是荒的。你听到过 ' + heard + ' 声，拿不出一样东西给别人看。';
+    else if (base > 0) m = MORALS.upNone;
+    document.getElementById('moral').textContent = m;
+  }
+
+  function tick(){
+    if (!down) return;
+    const now = clock();
+    if (now >= nextSlam){ heard++; lastSlam = now; nextSlam = now + gap(); thud(); }
+    ui(now); st.redraw();
+  }
+
+  st = SC.stage(document.getElementById('c'), W, H, draw);
+  ui(clock());
+
+  document.getElementById('ear').addEventListener('click', () => {
+    const now = clock();
+    movedAt = now;
+    if (!down){
+      down = true; downAt = now; nextSlam = now + NIGHT + gap();
+      try { const AC = window.AudioContext || window.webkitAudioContext; if (AC && !ac) ac = new AC(); } catch (e) {}
+      timer = setInterval(tick, 250);
+    } else {
+      base += now - downAt; down = false; nextSlam = Infinity;
+      clearInterval(timer); timer = null;
+    }
+    ui(now); st.redraw();
+  });
+})();
+</script>
+</body>
+</html>
