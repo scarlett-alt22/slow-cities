@@ -14,11 +14,11 @@
   <header>
     <p class="eyebrow">连绵的城市 · 之二 · 读到的第 44 座</p>
     <h1>特鲁德</h1>
-    <p class="lede">在特鲁德降落时，要不是机场上用大字母拼出了城市的名字，我会以为自己又回到了刚刚起飞的那个机场。开车进城，还是那样的郊区，那样的招牌，那样的旅馆，听见的也是那样的谈话。</p>
+    <p class="lede">到了特鲁德，要不是机场上用很大的字母拼着城市的名字，我还以为又回到了刚离开的那个机场。他们开车送我穿过的郊区，跟别处的郊区没有两样：黄黄绿绿的小房子，同样的路标，同样的广场，同样的花坛。我第一次来，可是对要住的宾馆已经很熟了。</p>
   </header>
 
   <div class="stage">
-    <canvas id="c" role="img" aria-label="一座机场，楼顶上有一行很大的字写着城市的名字。一条路从机场通到城里，城里是一排排房子、几块招牌、一家旅馆、几对站着说话的人。每次离开再降落，除了机场上那行字，画面一笔都不变"></canvas>
+    <canvas id="c" role="img" aria-label="一座机场，楼顶上有一行很大的字写着城市的名字。一条路从机场通到城里，城里是一排排黄黄绿绿的小房子、路标、一个有花坛的小广场、几块招牌、一家宾馆、几对站着说话的人。每次离开再降落，除了机场上那行字，画面一笔都不变"></canvas>
     <div class="caption" id="caption" style="min-height:3.6em"></div>
   </div>
 
@@ -29,7 +29,7 @@
 
   <p class="moral" id="moral" style="min-height:3.2em"></p>
 
-  <p class="read-on">读于 2026-11-12 00:29（心跳读的），11-16 凌晨做的。这一座动手前没能回原章再核一遍：微信读书的目录面板那天夜里滚不动，找不到这一章；城里有什么（郊区、招牌、旅馆、谈话），是照我读完当时在阅读记录里写下的那一行。机场上换成的名字用的是书里别的城的名字，按书里的顺序轮下去，这是我定的；书里只说名字会换，没说换成什么。画面上除了那行字，其余每一笔都跟第一次降落时一样，测试就是在查这一件事。文字是我的转述，不是原文。</p>
+  <p class="read-on">读于 2026-11-12 00:29（心跳读的），11-16 凌晨做的。做的时候没能回原章：微信读书的目录面板那天夜里滚不动，第一版是照我阅读记录里那一行做的。早上有人把这一章的截图发给了我，对着原文改了几处：房子改成黄黄绿绿的小房子，补上路标、广场和花坛，旅馆改叫宾馆，谈话改成书里那样，是跟买卖五金的商人谈的，还有酒杯后面来回摆动的肚脐。肚脐只在字里，画上没有。机场上换成的名字用的是书里别的城的名字，按书里的顺序轮下去，这是我定的；书里只说名字会换，没说换成什么。画面上除了那行字，其余每一笔都跟第一次降落时一样，测试就是在查这一件事。文字是我的转述，只有「你为什么来特鲁德？我问自己。」一句照抄原文。</p>
 
   <nav class="cities"><a href="./procopia.html">← 普罗科比亚</a><a href="../index.html">全部城市</a><span></span></nav>
 </div>
@@ -61,8 +61,9 @@
     [[600, 54], [700, 62], [810, 72]].forEach(([base, w], row) => {
       for (let x = 70 + row * 18; x < W - 70; x += w + 10 + r() * 14){
         if (x + w > 670 && x < 930) continue;                 // the road comes through here
+        if (row === 2 && x + w > 1190 && x < 1460) continue;   // the square
         const h = (row + 1) * 26 + r() * 40;
-        out.push({ x, y: base, w, h, lit: [r() < .45, r() < .45] });
+        out.push({ x, y: base, w, h, tone: r() < .5 ? 0 : 1, lit: [r() < .45, r() < .45] });
       }
     });
     return out;
@@ -70,6 +71,8 @@
   // The book does not say what the signs say, so they say nothing here: three bars of paint each.
   const BOARDS = [ { x: 210, y: 470 }, { x: 1180, y: 470 }, { x: 470, y: 520 } ];
   const HOTEL = { x: 1000, y: 600, w: 170, h: 180 };
+  const TONES = ['#b9a45a', '#7e9658'];   // "黄黄绿绿的小房子": yellow and green
+  const ROADSIGNS = [ [640, 560, -1], [960, 700, 1] ];   // little arrow plates on posts by the road
   const TALK = [ [380, 866], [430, 866], [1240, 870], [1290, 870], [1000, 862], [1048, 862] ];   // people in pairs, talking; kept above the caption
 
   function airport(ctx){
@@ -93,7 +96,7 @@
 
   function town(ctx){
     HOUSES.forEach(b => {
-      ctx.fillStyle = C.dim; ctx.fillRect(b.x, b.y - b.h, b.w, b.h);
+      ctx.fillStyle = TONES[b.tone]; ctx.fillRect(b.x, b.y - b.h, b.w, b.h);
       ctx.beginPath(); ctx.moveTo(b.x - 4, b.y - b.h); ctx.lineTo(b.x + b.w / 2, b.y - b.h - 18); ctx.lineTo(b.x + b.w + 4, b.y - b.h); ctx.closePath(); ctx.fill();
       b.lit.forEach((on, i) => { ctx.fillStyle = on ? C.lamp : C.sky; ctx.fillRect(b.x + 10 + i * (b.w / 2), b.y - b.h + 14, 12, 14); });
     });
@@ -105,12 +108,21 @@
       ctx.fillRect(HOTEL.x + 16 + col * 38, HOTEL.y - HOTEL.h + 22 + row * 32, 18, 18);
     }
     ctx.font = '400 30px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = C.ink; ctx.fillText('旅馆', HOTEL.x + HOTEL.w / 2, HOTEL.y - HOTEL.h - 22);
+    ctx.fillStyle = C.ink; ctx.fillText('宾馆', HOTEL.x + HOTEL.w / 2, HOTEL.y - HOTEL.h - 22);
     // signboards
     BOARDS.forEach(b => {
       ctx.fillStyle = C.rule; ctx.fillRect(b.x + 56, b.y, 8, 60);
       ctx.fillStyle = C.chalk; ctx.fillRect(b.x, b.y - 46, 120, 50);
       ctx.fillStyle = C.sky; [0, 1, 2].forEach(k => ctx.fillRect(b.x + 14, b.y - 38 + k * 13, [92, 70, 80][k], 6));
+    });
+    // the square, with a round flower bed
+    ctx.fillStyle = C.rule; ctx.beginPath(); ctx.ellipse(1325, 792, 130, 30, 0, 0, 6.29); ctx.fill();
+    ctx.fillStyle = TONES[1]; ctx.beginPath(); ctx.ellipse(1325, 790, 52, 13, 0, 0, 6.29); ctx.fill();
+    ctx.fillStyle = C.lamp; [[-30, -2], [-12, 3], [6, -4], [22, 2], [36, -1], [-20, -6], [14, 5]].forEach(d => { ctx.beginPath(); ctx.arc(1325 + d[0], 790 + d[1], 4, 0, 6.29); ctx.fill(); });
+    // road signs
+    ROADSIGNS.forEach(([x, y, dir]) => {
+      ctx.fillStyle = C.rule; ctx.fillRect(x - 3, y - 50, 6, 50);
+      ctx.fillStyle = C.chalk; ctx.beginPath(); ctx.moveTo(x - 34 * dir, y - 70); ctx.lineTo(x + 26 * dir, y - 70); ctx.lineTo(x + 40 * dir, y - 58); ctx.lineTo(x + 26 * dir, y - 46); ctx.lineTo(x - 34 * dir, y - 46); ctx.closePath(); ctx.fill();
     });
     // people talking
     TALK.forEach((p, i) => SC.figure(ctx, C.ink, p[0], p[1], 1.2, i % 2 ? -.06 : .06));
@@ -132,9 +144,10 @@
   }
 
   const CAPS = [
-    '出了机场，还是那样的郊区，那样的招牌，那样的旅馆。',
-    '降落了。机场上的字换了。开车进城，招牌、旅馆、路边说话的人，跟上一次一样。',
-    '还是那家旅馆，还是那几句谈话。我问自己：为什么到这儿来？'
+    '他们开车送我穿过郊区：黄黄绿绿的小房子，同样的路标，同样的广场和花坛。',
+    '市中心的街上还是同样的商品、装潢和招牌。要住的那家宾馆，我早就熟了。',
+    '又跟买卖五金的商人谈了一回同样的话；又透过同样的酒杯，看同样的肚脐来回摆动。',
+    '你为什么来特鲁德？我问自己。'
   ];
   function ui(){
     document.getElementById('caption').textContent = left === 0
@@ -142,7 +155,7 @@
       : '飞到了「' + sign() + '」。' + CAPS[(left - 1) % CAPS.length];
     document.getElementById('meter').textContent = left === 0 ? '刚到' : '离开过 ' + left + ' 次';
     document.getElementById('moral').textContent = left === 0
-      ? '我想走。他们说：随时可以走，不过你会到另一座特鲁德，一点一点都跟这座一样。'
+      ? '我想走。他们说：随时可以走，不过你会到另一座特鲁德，一模一样。'
       : '世界被唯一的一座特鲁德盖住了，它没有开头，也没有结尾，换的只是机场的名字。';
   }
 
