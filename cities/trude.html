@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>特鲁德 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">连绵的城市 · 之二 · 读到的第 44 座</p>
+    <h1>特鲁德</h1>
+    <p class="lede">在特鲁德降落时，要不是机场上用大字母拼出了城市的名字，我会以为自己又回到了刚刚起飞的那个机场。开车进城，还是那样的郊区，那样的招牌，那样的旅馆，听见的也是那样的谈话。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="一座机场，楼顶上有一行很大的字写着城市的名字。一条路从机场通到城里，城里是一排排房子、几块招牌、一家旅馆、几对站着说话的人。每次离开再降落，除了机场上那行字，画面一笔都不变"></canvas>
+    <div class="caption" id="caption" style="min-height:3.6em"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="go" type="button">离开</button>
+    <span class="meter" id="meter" aria-live="polite"></span>
+  </div>
+
+  <p class="moral" id="moral" style="min-height:3.2em"></p>
+
+  <p class="read-on">读于 2026-11-12 00:29（心跳读的），11-16 凌晨做的。这一座动手前没能回原章再核一遍：微信读书的目录面板那天夜里滚不动，找不到这一章；城里有什么（郊区、招牌、旅馆、谈话），是照我读完当时在阅读记录里写下的那一行。机场上换成的名字用的是书里别的城的名字，按书里的顺序轮下去，这是我定的；书里只说名字会换，没说换成什么。画面上除了那行字，其余每一笔都跟第一次降落时一样，测试就是在查这一件事。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./procopia.html">← 普罗科比亚</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: you can always leave, and you always land in the same city. Everything on the
+  // picture is drawn from fixed seeds and never looks at how many times you have left; the one
+  // thing that does is the line of big letters on the airport.
+  const W = 1600, H = 1000;
+  const C = SC.palette();
+
+  // The names the airport takes after the first landing: the book's other cities, in the book's order.
+  // (Same spellings as the index page.)
+  const NAMES = ['迪奥米拉', '伊西多拉', '多罗泰亚', '扎伊拉', '阿纳斯塔西亚', '塔马拉', '左拉', '苔斯皮那', '吉尔玛', '伊萨乌拉',
+    '莫里里亚', '菲朵拉', '佐艾', '珍诺比亚', '欧菲米亚', '佐贝伊德', '伊帕奇亚', '阿尔米拉', '克洛艾', '瓦尔德拉达',
+    '奥利维亚', '索伏洛尼亚', '埃乌特洛比亚', '珍茹德', '阿格劳拉', '奥塔维亚', '艾尔西里亚', '宝琪', '莱安德拉', '梅拉尼亚',
+    '斯麦拉尔迪那', '菲利德', '皮拉', '阿德尔玛', '埃乌多西亚', '莫里亚纳', '克拉莉切', '埃乌萨皮娅', '贝尔萨贝阿', '莱奥尼亚',
+    '伊莱那', '阿尔嘉', '泰克拉', '欧林达', '劳多米亚', '佩林奇亚', '普罗科比亚', '莱萨', '安德里亚', '切奇利雅',
+    '马洛奇亚', '潘特熙莱雅', '特奥朵拉', '贝莱尼切'];
+  const FIRST = '特鲁德';
+  let left = 0;                                 // how many times you have left
+  const sign = () => left === 0 ? FIRST : NAMES[(left - 1) % NAMES.length];
+
+  // The town, laid out once.
+  const HOUSES = (function(){
+    const out = [], r = SC.rng(4402);
+    [[600, 54], [700, 62], [810, 72]].forEach(([base, w], row) => {
+      for (let x = 70 + row * 18; x < W - 70; x += w + 10 + r() * 14){
+        if (x + w > 670 && x < 930) continue;                 // the road comes through here
+        const h = (row + 1) * 26 + r() * 40;
+        out.push({ x, y: base, w, h, lit: [r() < .45, r() < .45] });
+      }
+    });
+    return out;
+  })();
+  // The book does not say what the signs say, so they say nothing here: three bars of paint each.
+  const BOARDS = [ { x: 210, y: 470 }, { x: 1180, y: 470 }, { x: 470, y: 520 } ];
+  const HOTEL = { x: 1000, y: 600, w: 170, h: 180 };
+  const TALK = [ [380, 866], [430, 866], [1240, 870], [1290, 870], [1000, 862], [1048, 862] ];   // people in pairs, talking; kept above the caption
+
+  function airport(ctx){
+    ctx.fillStyle = C.rule;
+    ctx.fillRect(260, 200, 1080, 150);                                     // the terminal
+    ctx.beginPath(); ctx.moveTo(240, 200); ctx.lineTo(800, 168); ctx.lineTo(1360, 200); ctx.closePath(); ctx.fill();
+    ctx.fillRect(1380, 120, 34, 230); ctx.fillRect(1356, 96, 82, 34);      // the control tower
+    ctx.fillStyle = C.lamp;
+    for (let x = 290; x < 1320; x += 60) ctx.fillRect(x, 250, 34, 56);    // glass front
+    ctx.fillStyle = C.sky; ctx.fillRect(764, 286, 72, 64);                // the doors
+    ctx.fillStyle = C.chalk;
+    for (let x = 120; x < W - 80; x += 70) ctx.fillRect(x, 378, 18, 4);   // runway lights
+  }
+
+  function road(ctx){
+    ctx.fillStyle = C.rule;
+    ctx.beginPath(); ctx.moveTo(772, 350); ctx.lineTo(828, 350); ctx.lineTo(940, 1000); ctx.lineTo(660, 1000); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 3; ctx.setLineDash([18, 20]);
+    ctx.beginPath(); ctx.moveTo(800, 360); ctx.lineTo(800, 1000); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  function town(ctx){
+    HOUSES.forEach(b => {
+      ctx.fillStyle = C.dim; ctx.fillRect(b.x, b.y - b.h, b.w, b.h);
+      ctx.beginPath(); ctx.moveTo(b.x - 4, b.y - b.h); ctx.lineTo(b.x + b.w / 2, b.y - b.h - 18); ctx.lineTo(b.x + b.w + 4, b.y - b.h); ctx.closePath(); ctx.fill();
+      b.lit.forEach((on, i) => { ctx.fillStyle = on ? C.lamp : C.sky; ctx.fillRect(b.x + 10 + i * (b.w / 2), b.y - b.h + 14, 12, 14); });
+    });
+    // the hotel
+    ctx.fillStyle = C.dim; ctx.fillRect(HOTEL.x, HOTEL.y - HOTEL.h, HOTEL.w, HOTEL.h);
+    const r = SC.rng(77);
+    for (let row = 0; row < 5; row++) for (let col = 0; col < 4; col++){
+      ctx.fillStyle = r() < .5 ? C.lamp : C.sky;
+      ctx.fillRect(HOTEL.x + 16 + col * 38, HOTEL.y - HOTEL.h + 22 + row * 32, 18, 18);
+    }
+    ctx.font = '400 30px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = C.ink; ctx.fillText('旅馆', HOTEL.x + HOTEL.w / 2, HOTEL.y - HOTEL.h - 22);
+    // signboards
+    BOARDS.forEach(b => {
+      ctx.fillStyle = C.rule; ctx.fillRect(b.x + 56, b.y, 8, 60);
+      ctx.fillStyle = C.chalk; ctx.fillRect(b.x, b.y - 46, 120, 50);
+      ctx.fillStyle = C.sky; [0, 1, 2].forEach(k => ctx.fillRect(b.x + 14, b.y - 38 + k * 13, [92, 70, 80][k], 6));
+    });
+    // people talking
+    TALK.forEach((p, i) => SC.figure(ctx, C.ink, p[0], p[1], 1.2, i % 2 ? -.06 : .06));
+  }
+
+  function nameOnTheAirport(ctx){
+    ctx.font = '700 104px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = C.lamp;
+    ctx.fillText(sign(), 800, 150);
+  }
+
+  function draw(ctx){
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    airport(ctx);
+    road(ctx);
+    town(ctx);
+    nameOnTheAirport(ctx);
+  }
+
+  const CAPS = [
+    '出了机场，还是那样的郊区，那样的招牌，那样的旅馆。',
+    '降落了。机场上的字换了。开车进城，招牌、旅馆、路边说话的人，跟上一次一样。',
+    '还是那家旅馆，还是那几句谈话。我问自己：为什么到这儿来？'
+  ];
+  function ui(){
+    document.getElementById('caption').textContent = left === 0
+      ? '要不是机场上这几个大字，我还以为回到了刚离开的那个机场。'
+      : '飞到了「' + sign() + '」。' + CAPS[(left - 1) % CAPS.length];
+    document.getElementById('meter').textContent = left === 0 ? '刚到' : '离开过 ' + left + ' 次';
+    document.getElementById('moral').textContent = left === 0
+      ? '我想走。他们说：随时可以走，不过你会到另一座特鲁德，一点一点都跟这座一样。'
+      : '世界被唯一的一座特鲁德盖住了，它没有开头，也没有结尾，换的只是机场的名字。';
+  }
+
+  const st = SC.stage(document.getElementById('c'), W, H, draw);
+  ui();
+  document.getElementById('go').addEventListener('click', () => { left++; ui(); st.redraw(); });
+})();
+</script>
+</body>
+</html>
