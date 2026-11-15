@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>普罗科比亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">连绵的城市 · 之三 · 读到的第 48 座</p>
+    <h1>普罗科比亚</h1>
+    <p class="lede">每年路过普罗科比亚，我都住同一家旅店的同一间房，进门第一件事是掀开窗帘。窗外是一道土坑、一座桥、一堵矮墙、一棵花楸树、一块玉米地、一丛结着黑莓的刺藤、一个鸡舍、一座黄色的山包、一朵白云，和一块不规则四边形的蓝天。第一年，那里一个人也没有。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="旅店房间里的一扇窗，窗外是土坑、桥、矮墙、花楸树、玉米地、刺藤、鸡舍、黄色山包、白云和一块蓝天。每过一年，窗里多出一些圆脸，风景一样一样被挡住"></canvas>
+    <div class="caption" id="caption" style="min-height:4.8em"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="go" type="button">又一年</button>
+    <span class="meter" id="meter" aria-live="polite"></span>
+  </div>
+
+  <p class="moral" id="moral" style="min-height:3.2em"></p>
+
+  <p class="read-on">读于 2026-11-12 07:35（心跳读的），11-15 早上做的；动手前回原章核过一遍。窗里的数照书里的数走：零、一、三、回程时六、十六（算上土坑里的）、二十九（八个在花楸树上）、四十七（不算鸡舍里的）。书里在那之后就不报数了，这一页也不报。脸只会多，不会少，已经出现的脸一直在原处；风景从近处往远处一样样被挡住，天是最后一样。最后那一步不再看窗，屋里正好二十六个人，「我」不画在里面。脸摆在哪儿、四十七个怎么分到各处、哪一年挡住哪一样，是我定的。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./raissa.html">← 莱萨</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: a window that fills, year by year, with pleasant round faces until the view is gone,
+  // the sky last. Then he stops looking out, and the room itself holds twenty-six people.
+  const W = 1600, H = 1000;
+  const WX0 = 400, WY0 = 120, WX1 = 1200, WY1 = 760;    // the window
+  const C = SC.palette();
+  // Daylight outside. These do not follow the night palette: it is daytime out there.
+  const OUT = { haze: '#d9d4c3', sky: '#6f9cc8', cloud: '#f4f1e8', hill: '#cfa94c', grass: '#93a35a',
+                corn: '#b9a24a', dirt: '#6d5a40', wall: '#9a8f80', wood: '#7a5a3a', berry: '#c2402e',
+                bramble: '#3f4a2c', bb: '#2a1f33', face: '#efd9b8', freckle: '#b0703e', faceLine: '#5a4636' };
+
+  // Where faces can be. Each place keeps its own list of spots, so a face, once there, stays put.
+  const PLACES = {
+    wall:     { x0: 492, x1: 748, y0: 586, y1: 590 },
+    ditch:    { x0: 842, x1: 1078, y0: 672, y1: 728 },
+    rowan:    { x0: 426, x1: 534, y0: 446, y1: 552 },
+    bridge:   { x0: 584, x1: 752, y0: 418, y1: 440 },
+    corn:     { x0: 836, x1: 1090, y0: 486, y1: 588 },
+    hill:     { x0: 620, x1: 1000, y0: 318, y1: 392 },
+    bramble:  { x0: 1118, x1: 1184, y0: 512, y1: 588 },
+    henhouse: { x0: 1030, x1: 1092, y0: 398, y1: 426 }
+  };
+  const radius = y => Math.max(9, 8 + (y - 300) / 460 * 10);   // nearer is bigger
+  function spots(p, seed){
+    const out = [], r = SC.rng(seed);
+    const ry = radius((p.y0 + p.y1) / 2);
+    for (let y = p.y0; y <= p.y1; y += ry * 1.9)
+      for (let x = p.x0; x <= p.x1; x += ry * 2.05) out.push([Math.min(p.x1, Math.max(p.x0, x + (r() - .5) * 4)), Math.min(p.y1, Math.max(p.y0, y + (r() - .5) * 4))]);   // jitter, but never out of its place
+    for (let i = out.length - 1; i > 0; i--){ const j = Math.floor(r() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; }
+    return out;
+  }
+  const SPOTS = {}; Object.keys(PLACES).forEach((k, i) => SPOTS[k] = spots(PLACES[k], 31 + i * 7));
+  // The wall's row goes left to right from under the rowan's leaves: the first face is seen there.
+  SPOTS.wall = [505, 539, 573, 607, 641, 675, 709, 743].map(x => [x, 588]);
+
+  // The visits. n = how many faces in each place (henhouse is never counted); gone = what is covered.
+  const FRONT = ['ditch', 'wall', 'rowan', 'corn', 'bramble'], MIDDLE = ['bridge', 'henhouse', 'hill'], BACK = ['cloud', 'sky'];
+  const STEPS = [
+    { n: {}, said: '0', cap: '第一年，窗外一个人也没有。我确信。' },
+    { n: { wall: 1 }, said: '1', cap: '一年后，花楸树的叶子晃了晃，叶子中间有一张扁圆的脸，在啃玉米棒子。' },
+    { n: { wall: 3 }, said: '3', cap: '又过一年，矮墙上骑坐着三个人。', next: '回程时再看一眼' },
+    { n: { wall: 6 }, said: '6', cap: '等我回程时再看，墙上一排六个，手搁在膝头，身边一盘花楸果。' },
+    { n: { wall: 6, ditch: 6, bridge: 2, corn: 2 }, said: '16', cap: '一进房间就掀窗帘，数又多了几张脸：十六个，土坑里的也算上。' },
+    { n: { wall: 6, ditch: 6, rowan: 8, bridge: 4, corn: 5 }, said: '29', cap: '二十九个，其中八个爬在花楸树上。' },
+    { n: { wall: 7, ditch: 8, rowan: 8, bridge: 7, corn: 10, hill: 4, bramble: 3, henhouse: 5 }, said: '47', note: '（鸡舍里的不算）',
+      cap: '四十七个，鸡舍里那些还没算。长得都差不多，看上去都客客气气，雀斑，笑脸，有一两个嘴边还带着黑莓汁。' },
+    { n: null, fill: [470], gone: FRONT, m: '数不清了，只会比看得见的多', cap: '又过了些年，土坑和树都被挡住了，前面一排排全是嚼着树叶的圆脸。一小块玉米地里，抱着膝盖能坐下的人多得出奇。' },
+    { n: null, fill: [470, 300], gone: FRONT.concat(MIDDLE), m: '数不清了，只会比看得见的多', cap: '山包上的人一年比一年密。桥上的人后来一个骑到另一个肩上，桥那边就再也看不到了。', next: '又一年' },
+    { n: null, fill: [470, 300, WY0], gone: FRONT.concat(MIDDLE, BACK), m: '窗里只有脸', cap: '今年掀开窗帘，整扇窗里只剩脸：角上是脸，远处是脸，后面的人把手搭在前面人的肩上。天也看不见了。', next: '离开窗户' },
+    { room: true, said: '屋里 26', cap: '我不再看窗了。屋里挪一步都得惊动蹲在地上的人，要从五斗柜上那几位的膝盖和床边轮流靠着的人的胳膊肘之间侧身过去。', next: '从头再来' }
+  ];
+  const ORDER = ['sky', 'cloud', 'hill', 'henhouse', 'bridge', 'corn', 'bramble', 'rowan', 'wall', 'ditch'];   // back to front
+  let step = 0;
+
+  function face(ctx, x, y, r){
+    ctx.fillStyle = OUT.face; ctx.strokeStyle = OUT.faceLine; ctx.lineWidth = Math.max(1, r / 8);
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.29); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = OUT.faceLine;
+    ctx.fillRect(x - r * .38, y - r * .2, r * .14, r * .14); ctx.fillRect(x + r * .24, y - r * .2, r * .14, r * .14);
+    ctx.beginPath(); ctx.arc(x, y + r * .1, r * .4, .5, 2.64); ctx.stroke();
+    ctx.fillStyle = OUT.freckle;
+    ctx.fillRect(x - r * .55, y + r * .12, r * .09, r * .09); ctx.fillRect(x + r * .45, y + r * .15, r * .09, r * .09);
+  }
+
+  const SCENE = {
+    sky(ctx){ ctx.fillStyle = OUT.sky; ctx.beginPath(); ctx.moveTo(430, 136); ctx.lineTo(1150, 160); ctx.lineTo(1176, 318); ctx.lineTo(452, 296); ctx.closePath(); ctx.fill(); },
+    cloud(ctx){ ctx.fillStyle = OUT.cloud; [[690, 210, 40], [736, 194, 50], [786, 212, 38], [740, 226, 34]].forEach(c => { ctx.beginPath(); ctx.arc(c[0], c[1], c[2], 0, 6.29); ctx.fill(); }); },
+    hill(ctx){ ctx.fillStyle = OUT.hill; ctx.beginPath(); ctx.moveTo(WX0, 470); ctx.quadraticCurveTo(820, 210, WX1, 470); ctx.closePath(); ctx.fill(); },
+    henhouse(ctx){ ctx.fillStyle = OUT.wood; ctx.fillRect(1020, 392, 82, 52); ctx.beginPath(); ctx.moveTo(1012, 394); ctx.lineTo(1061, 362); ctx.lineTo(1110, 394); ctx.closePath(); ctx.fill();
+                   ctx.fillStyle = OUT.bb; ctx.fillRect(1030, 400, 62, 30); },
+    bridge(ctx){ ctx.strokeStyle = OUT.wood; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(560, 470); ctx.quadraticCurveTo(668, 410, 776, 470); ctx.stroke();
+                 ctx.lineWidth = 3; for (let x = 584; x <= 752; x += 24){ ctx.beginPath(); ctx.moveTo(x, 452 - 30 * Math.sin((x - 560) / 216 * Math.PI) * .9); ctx.lineTo(x, 434 - 30 * Math.sin((x - 560) / 216 * Math.PI) * .9); ctx.stroke(); } },
+    corn(ctx){ ctx.strokeStyle = OUT.corn; ctx.lineWidth = 3; for (let x = 830; x <= 1096; x += 14){ ctx.beginPath(); ctx.moveTo(x, 600); ctx.lineTo(x + 3, 482); ctx.stroke(); } },
+    bramble(ctx){ ctx.strokeStyle = OUT.bramble; ctx.lineWidth = 3; const r = SC.rng(5);
+                  for (let i = 0; i < 18; i++){ ctx.beginPath(); ctx.moveTo(1110 + r() * 80, 600); ctx.quadraticCurveTo(1100 + r() * 100, 520, 1112 + r() * 76, 500 + r() * 30); ctx.stroke(); }
+                  ctx.fillStyle = OUT.bb; for (let i = 0; i < 14; i++){ ctx.beginPath(); ctx.arc(1116 + r() * 70, 512 + r() * 80, 4, 0, 6.29); ctx.fill(); } },
+    rowan(ctx){ ctx.strokeStyle = OUT.wood; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(470, 640); ctx.lineTo(478, 545); ctx.stroke();
+                ctx.fillStyle = OUT.grass; ctx.beginPath(); ctx.arc(482, 520, 72, 0, 6.29); ctx.fill();
+                ctx.fillStyle = OUT.berry; const r = SC.rng(9); for (let i = 0; i < 16; i++){ ctx.beginPath(); ctx.arc(432 + r() * 100, 476 + r() * 90, 4, 0, 6.29); ctx.fill(); } },
+    wall(ctx){ ctx.fillStyle = OUT.wall; ctx.fillRect(430, 604, 340, 40); ctx.strokeStyle = OUT.dirt; ctx.lineWidth = 2;
+               for (let x = 430; x < 770; x += 34){ ctx.beginPath(); ctx.moveTo(x, 604); ctx.lineTo(x, 644); ctx.stroke(); } },
+    ditch(ctx){ ctx.fillStyle = OUT.dirt; ctx.beginPath(); ctx.ellipse(960, 704, 132, 40, 0, 0, 6.29); ctx.fill(); }
+  };
+
+  function windowScene(ctx, s){
+    ctx.save(); ctx.beginPath(); ctx.rect(WX0, WY0, WX1 - WX0, WY1 - WY0); ctx.clip();
+    ctx.fillStyle = OUT.haze; ctx.fillRect(WX0, WY0, WX1 - WX0, WY1 - WY0);
+    ctx.fillStyle = OUT.grass; ctx.fillRect(WX0, 470, WX1 - WX0, WY1 - 470);
+    const gone = new Set(s.gone || []);
+    for (const k of ORDER) if (!gone.has(k)) SCENE[k](ctx);
+    // the plate of rowan berries on the wall, while the wall can still be seen
+    if (!gone.has('wall') && step >= 3){ ctx.fillStyle = OUT.cloud; ctx.beginPath(); ctx.ellipse(626, 600, 16, 5, 0, 0, 6.29); ctx.fill();
+      ctx.fillStyle = OUT.berry; [[620, 596], [627, 594], [633, 597]].forEach(p => { ctx.beginPath(); ctx.arc(p[0], p[1], 3, 0, 6.29); ctx.fill(); }); }
+    // Faces. Bands that are full get rows of faces, far rows first; the faces already there are drawn last, on top.
+    (s.fill || []).forEach(top => {
+      const bottom = top === WY0 ? 300 : top === 300 ? 470 : WY1 + 20;
+      for (let y = top + 8; y < bottom + 8; y += radius(y) * 1.7){
+        const r = radius(y), off = Math.round(y) % 2 ? r : 0;
+        for (let x = WX0 + off; x < WX1 + r; x += r * 1.95) face(ctx, x, y, r);
+      }
+    });
+    const n = s.n || STEPS[6].n;
+    Object.keys(n).forEach(k => SPOTS[k].slice(0, n[k]).forEach(p => face(ctx, p[0], p[1], radius(p[1]))));
+    ctx.restore();
+  }
+
+  function frameAndCurtains(ctx, closed){
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 14; ctx.strokeRect(WX0, WY0, WX1 - WX0, WY1 - WY0);
+    ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(800, WY0); ctx.lineTo(800, WY1); ctx.moveTo(WX0, 440); ctx.lineTo(WX1, 440); ctx.stroke();
+    ctx.fillStyle = C.skyHi;
+    if (closed){ ctx.fillRect(WX0 - 30, WY0 - 20, WX1 - WX0 + 60, WY1 - WY0 + 40); return; }
+    ctx.beginPath(); ctx.moveTo(WX0 - 40, WY0 - 20); ctx.lineTo(WX0 + 40, WY0 - 20); ctx.quadraticCurveTo(WX0 + 10, 440, WX0 + 30, WY1 + 20); ctx.lineTo(WX0 - 40, WY1 + 20); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(WX1 + 40, WY0 - 20); ctx.lineTo(WX1 - 40, WY0 - 20); ctx.quadraticCurveTo(WX1 - 10, 440, WX1 - 30, WY1 + 20); ctx.lineTo(WX1 + 40, WY1 + 20); ctx.closePath(); ctx.fill();
+  }
+
+  // The room, last step: 26 people. Where they are is from the book (floor, chest of drawers, bed); how many where is mine.
+  const ROOM = (function(){
+    const out = [], r = SC.rng(77);
+    for (let i = 0; i < 4; i++) out.push({ x: 150 + i * 46, y: 520, sit: 'chest' });                      // on the chest of drawers
+    for (let i = 0; i < 8; i++) out.push({ x: 1180 + (i % 4) * 92, y: 560 + Math.floor(i / 4) * 70, sit: 'bed' });   // leaning on the bed, in turns
+    for (let i = 0; i < 14; i++) out.push({ x: 380 + (i % 7) * 116 + (i >= 7 ? 58 : 0) + (r() - .5) * 24, y: 712 + Math.floor(i / 7) * 74 + (r() - .5) * 10, sit: 'floor' });   // squatting on the floor, kept above the caption
+    return out;
+  })();
+  function room(ctx){
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(0, 690); ctx.lineTo(W, 690); ctx.stroke();                    // where the wall meets the floor
+    ctx.fillStyle = C.rule; ctx.fillRect(70, 540, 240, 160);                                   // a chest of drawers
+    ctx.strokeStyle = C.skyHi; ctx.lineWidth = 3; for (let y = 580; y < 700; y += 40){ ctx.beginPath(); ctx.moveTo(80, y); ctx.lineTo(300, y); ctx.stroke(); }
+    ctx.fillStyle = C.rule; ctx.fillRect(1120, 600, 440, 110); ctx.fillRect(1530, 520, 30, 190);  // a bed
+    ROOM.forEach(p => {
+      const rr = 18;
+      ctx.strokeStyle = C.dim; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath();
+      if (p.sit === 'floor'){ ctx.moveTo(p.x, p.y + rr); ctx.lineTo(p.x - 2, p.y + rr + 16); ctx.lineTo(p.x + 12, p.y + rr + 8); ctx.lineTo(p.x + 12, p.y + rr + 22); ctx.moveTo(p.x, p.y + rr + 6); ctx.lineTo(p.x + 14, p.y + rr + 10); }   // squatting: knees up, arms on them
+      else { ctx.moveTo(p.x, p.y + rr); ctx.lineTo(p.x, p.y + rr + 34); ctx.moveTo(p.x, p.y + rr + 14); ctx.lineTo(p.x + (p.sit === 'bed' ? 22 : -14), p.y + rr + 30); }
+      ctx.stroke();
+      face(ctx, p.x, p.y, rr);
+    });
+  }
+
+  // The picture only changes when the step does, and it can hold over a thousand faces, so each step
+  // is painted once into an offscreen canvas and copied onto the page every frame. (Painting only on
+  // change straight onto the page would go blank after a resize: resetting the canvas size clears it.)
+  let cache = null, cacheKey = '';
+  function draw(ctx){
+    const cw = ctx.canvas.width, ch = ctx.canvas.height, key = step + ':' + cw + 'x' + ch;
+    if (key !== cacheKey){
+      cache = cache || document.createElement('canvas');
+      cache.width = cw; cache.height = ch;
+      const c2 = cache.getContext('2d');
+      c2.setTransform(cw / W, 0, 0, ch / H, 0, 0);
+      paint(c2);
+      cacheKey = key;
+    }
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(cache, 0, 0); ctx.restore();
+  }
+
+  function paint(ctx){
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const s = STEPS[step];
+    if (s.room){ frameAndCurtains(ctx, true); room(ctx); return; }
+    windowScene(ctx, s);
+    frameAndCurtains(ctx, false);
+  }
+
+  const START = '每年同一家旅店，同一间房，进门先掀窗帘。';
+  const END = '幸好大家都很有礼貌。';
+  function ui(){
+    const s = STEPS[step];
+    document.getElementById('caption').textContent = s.cap;
+    document.getElementById('meter').textContent = s.room ? s.said + ' 个人' : s.m || '窗里 ' + s.said + ' 张脸' + (s.note || '');
+    document.getElementById('moral').textContent = s.room ? END : START;
+    document.getElementById('go').textContent = STEPS[step].next || '又一年';
+  }
+
+  const st = SC.stage(document.getElementById('c'), W, H, draw);
+  ui();
+  document.getElementById('go').addEventListener('click', () => {
+    step = (step + 1) % STEPS.length;
+    ui(); st.redraw();
+  });
+})();
+</script>
+</body>
+</html>
