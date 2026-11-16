@@ -5,10 +5,11 @@
 // ② 旧物只会少、不会多：每个世纪画出来的旧物是上一个世纪的子集，件数只减不增，从不冒出八件以外的东西
 // ③ 兴旺的世纪每一件都在玻璃下，败落的世纪一件也不在
 // ④ 同一种年月，相邻两回的摆法不一样（位置或用场至少变一处）
-// ⑤ 读书时记下的三样用场（种紫苏、托鸡蛋篮、当床单）八十个世纪里都出现过
+// ⑤ 打开时就是书里的五样用场：柱头撑着母鸡下蛋的篮子、尸骨坛种紫苏、窗帘当床单、铁窗花当烤猫肉的架子、镶木拿来烧火
+// ⑧ 拿去烧了火的东西，之后再也不出现（书：被消耗而得不到替换）
 // ⑥ 「最早那座」一件旧物也不画，caption 说没有留下图；再按世纪按钮回到原样
 // ⑦ meter 报的件数等于画出来的件数
-// 变异（自检用）：MUT=1..5 各弄坏一处，这个文件必须以非 0 退出。
+// 变异（自检用）：MUT=1..7 各弄坏一处，这个文件必须以非 0 退出。
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const shared = fs.readFileSync(process.argv[3], 'utf8');
@@ -20,13 +21,16 @@ if (MUT === '1') swap("    arr = arrange();\n  }", "    if (century === 10) left
 if (MUT === '2') swap("drawOld(ctx, o, x, y, ph === 'bloom', a.use);", "drawOld(ctx, o, x, y, ph === 'bloom' && a.slot !== 3, a.use);");
 if (MUT === '3') swap("const r = SC.rng(9100 + century * 31 + k * 7);", "const r = SC.rng(9100);");
 if (MUT === '4') swap("if (showFirst){ backdrop(ctx, 'decay'); nothing(ctx); return; }", "if (showFirst){ backdrop(ctx, 'decay'); nothing(ctx); }");
+if (MUT === '6') swap("if (burnt){ left = left.filter(id => id !== burnt.id);", "if (false){ left = left.filter(id => id !== burnt.id);");
+if (MUT === '7') swap("(century === 1 ? 0 :", "(century === 0 ? 0 :");
 if (MUT === '5') swap("旧物 ' + left.length", "旧物 ' + OLD.length");
 
 function hook(a, b){ if (!inline.includes(a)) throw new Error('hook point missing: ' + a); inline = inline.replace(a, b); }
 hook("  function drawOld(ctx, o, x, y, glass, use){\n", "  function drawOld(ctx, o, x, y, glass, use){\n    ctx.__mark('old', o.id, x, y, glass, use);\n");
 
 const BOOK_OLD = ['cap1', 'cap2', 'urn1', 'urn2', 'cur', 'gr1', 'gr2', 'inl'];
-const BOOK_USES = ['种着紫苏', '托着一篮鸡蛋', '当了床单'];
+const BOOK_USES = ['撑着母鸡下蛋的篮子', '种着紫苏', '当了床单', '当了烤猫肉的架子', '拿来烧了火'];
+const BURN = '拿来烧了火';
 const els = {}, handlers = {};
 function el(id){ return els[id] || (els[id] = { id, textContent: '', disabled: false, classList: { add(){}, remove(){} },
   addEventListener(ev, f){ handlers[id + ':' + ev] = f; },
@@ -73,10 +77,12 @@ const FF = press('first');
 check(FF.length === 0, '⑥ 「最早那座」一件旧物也不画（画了 ' + FF.length + ' 件）');
 check(/没有留下一张图/.test(els.caption.textContent), '⑥ caption 说没有留下图');
 const FB = press('go');
+check(!FB.some(o => F0.some(p => p.id === o.id && p.text === BURN)), '⑧ 第一次败落里烧掉的，到兴旺时已经不在了');
 check(/第 2 个世纪/.test(els.meter.textContent) && FB.length > 0 && FB.length === +els.meter.textContent.match(/旧物 (\d+) 件/)[1] && !/没有留下/.test(els.caption.textContent),
   '⑥ 再按世纪按钮回到街上（' + before + ' → ' + els.meter.textContent + '，画了 ' + FB.length + ' 件）');
 
 
+const burned = new Set(F0.filter(o => o.text === BURN).map(o => o.id)); let burnOk = true, burnedSeen = burned.size;
 let prevIds = new Set(FB.map(o => o.id)), subset = true, onlyBook = true, glassOk = true, meterOk = true, changeOk = true, firstBad = '';
 const lastLayout = { decay: null, bloom: layout(FB) };
 const usesSeen = new Set([...F0, ...FB].map(o => o.text));
@@ -93,16 +99,20 @@ for (let c = 3; c <= 82; c++){
   if (F.length > 0 && lastLayout[ph] !== null && L === lastLayout[ph]) changeOk = false;
   lastLayout[ph] = L;
   if (ph === 'decay') F.forEach(o => usesSeen.add(o.text));
+  if (F.some(o => burned.has(o.id))) burnOk = false;
+  if (ph === 'decay') F.filter(o => o.text === BURN).forEach(o => { burned.add(o.id); burnedSeen++; });
   prevIds = ids;
 }
 check(subset, '② 每个世纪的旧物都是上一个世纪的子集，件数只减不增' + (firstBad ? '（' + firstBad + '起不对）' : '') + '；八十个世纪后剩 ' + prevIds.size + ' 件');
 check(onlyBook, '② 从没冒出八件以外的旧物');
 check(glassOk, '③ 兴旺时每一件都在玻璃下，败落时一件也不在');
 check(changeOk, '④ 同一种年月，相邻两回的摆法都不一样');
-check(BOOK_USES.every(u => usesSeen.has(u)), '⑤ 读书时记下的三样用场都出现过（' + BOOK_USES.filter(u => !usesSeen.has(u)).join('、') + '）');
+const firstUses = new Set(F0.map(o => o.text));
+check(BOOK_USES.every(u => firstUses.has(u)), '⑤ 打开时书里的五样用场都在（缺：' + BOOK_USES.filter(u => !firstUses.has(u)).join('、') + '）');
+check(burnOk && burnedSeen > 0, '⑧ 烧过火的东西之后再没出现（烧过 ' + burnedSeen + ' 回）');
 check(meterOk, '⑦ meter 的世纪数和件数都对得上画面');
 
 console.log(fail ? fail + ' 条没过' : '全过');
 process.exit(fail ? 1 : 0);
 // 跑：node tests/clarice_test.js cities/clarice.html shared.js
-// 变异：for m in 1 2 3 4 5; do MUT=$m node tests/clarice_test.js cities/clarice.html shared.js >/dev/null 2>&1 && echo "MUT=$m 没抓到" || echo "MUT=$m 抓到"; done
+// 变异：for m in 1 2 3 4 5 6 7; do MUT=$m node tests/clarice_test.js cities/clarice.html shared.js >/dev/null 2>&1 && echo "MUT=$m 没抓到" || echo "MUT=$m 抓到"; done
