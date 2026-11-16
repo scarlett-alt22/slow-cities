@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>克拉莉切 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与名字 · 之四 · 读到的第 37 座</p>
+    <h1>克拉莉切</h1>
+    <p class="lede">克拉莉切衰败过好几回，也重新兴旺过好几回。每回从头来过，手边只有上一回剩下的东西：败落的年月里，它们被挪去派别的用场；兴旺的年月里，同样这些东西又被请进玻璃罩，当成宝贝供起来。最早那座克拉莉切是什么样子，谁也说不上来。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="一座城的街面，房子后面是天。八件旧东西散在街上派着别的用场：柱头托着鸡蛋篮，大理石罐里种着紫苏，织锦窗帘当了床单，铁窗花围了鸡圈。按一下就过去一个世纪：城兴旺时，剩下的旧物被摆到丝绒垫上、罩进玻璃；败落时又被拆出来挪作别用，有时耗掉一件。旧物只会越来越少，从来不多出一件"></canvas>
+    <div class="caption" id="caption" style="min-height:3.6em"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="go" type="button">又过了一个世纪</button>
+    <button id="first" type="button">最早那座</button>
+    <span class="meter" id="meter" aria-live="polite"></span>
+  </div>
+
+  <p class="moral" id="moral" style="min-height:3.2em"></p>
+
+  <p class="read-on">读于 2026-11-11 02:44（心跳读的），11-17 凌晨做的。做的时候没回原章，照的是读完那天夜里我在阅读记录和做法草稿里记下的：几度衰败又复兴，每回把上一回的碎片挪作他用，兴旺时又罩进玻璃当宝贝；能肯定的只有一定数量的东西，在一定的空间里挪动、混杂、再拼起来。种紫苏、托鸡蛋篮、当床单这三样用途是那时记下的；别的用途、挑哪几件旧物、什么时候耗掉一件，都是我定的。草稿里还记着旧物有时会被新东西盖住，这页没有画新东西。文字都是我的转述。测试查三件事：旧物只会少、不会多，也从不冒出一件没见过的旧物；兴旺时每一件都在玻璃下，败落时一件也不在；「最早那座」那一格永远是空的。</p>
+
+  <nav class="cities"><a href="./trude.html">← 特鲁德</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: a given number of old things, moved about in a given space, mixed, put together again.
+  // Nothing is ever added to OLD at run time; a century can only reshuffle what is left, or wear one out.
+  const W = 1600, H = 1000;
+  const C = SC.palette();
+  const VELVET = '#7a2e3a', HERB = '#7e9658', GLASS = 'rgba(220,235,245,.16)';
+
+  const OLD = [
+    { id: 'cap1', kind: 'capital', name: '柱头' },
+    { id: 'cap2', kind: 'capital', name: '柱头' },
+    { id: 'urn1', kind: 'urn', name: '大理石罐' },
+    { id: 'urn2', kind: 'urn', name: '大理石罐' },
+    { id: 'cur',  kind: 'curtain', name: '织锦窗帘' },
+    { id: 'gr1',  kind: 'grille', name: '铁窗花' },
+    { id: 'gr2',  kind: 'grille', name: '铁窗花' },
+    { id: 'inl',  kind: 'inlay', name: '一块镶木' }
+  ];
+  // The first use of capital, urn and curtain is from my reading notes; the rest are mine.
+  const USES = {
+    capital: ['托着一篮鸡蛋', '垫在门后挡门', '当了台阶'],
+    urn:     ['种着紫苏', '接雨水', '泡着腌菜'],
+    curtain: ['当了床单', '晾在绳上遮太阳', '裹着一捆柴'],
+    grille:  ['围了鸡圈', '架在灶上当烤架', '挡在墙洞上'],
+    inlay:   ['当了砧板', '补在门板上', '垫在桌脚下']
+  };
+  // Eight places in the street (decay) and eight places on the shelf (bloom).
+  const STREET = [[150, 700], [330, 760], [520, 690], [700, 770], [890, 700], [1080, 760], [1270, 690], [1450, 770]];   // labels stay above the caption
+  const SHELF = [[170, 640], [350, 640], [530, 640], [710, 640], [890, 640], [1070, 640], [1250, 640], [1430, 640]];
+
+  let century = 1;                            // odd = decay, even = bloom; the page opens in a decay
+  let left = OLD.map(o => o.id);              // ids of what is still there, never added to
+  let lastWorn = null;
+  let showFirst = false;
+  const lastArr = { decay: '', bloom: '' };
+  let arr = null;
+
+  const phase = c => c % 2 ? 'decay' : 'bloom';
+  const obj = id => OLD.find(o => o.id === id);
+
+  function shuffled(n, r){ const a = [...Array(n).keys()]; for (let i = n - 1; i > 0; i--){ const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+  // Where everything goes this century. Never the same layout as the last century of the same kind.
+  function arrange(){
+    const ph = phase(century);
+    for (let k = 0; k < 40; k++){
+      const r = SC.rng(9100 + century * 31 + k * 7);
+      const slots = shuffled(8, r);
+      const a = left.map((id, i) => ({ id, slot: slots[i], use: ph === 'decay' ? Math.floor(r() * 3) : -1 }));
+      const key = JSON.stringify(a);
+      if (key !== lastArr[ph] || k === 39){ lastArr[ph] = key; return a; }
+    }
+  }
+
+  function nextCentury(){
+    century++;
+    lastWorn = null;
+    if (phase(century) === 'decay' && left.length){
+      const r = SC.rng(500 + century);
+      if (r() < .3){ lastWorn = left.splice(Math.floor(r() * left.length), 1)[0]; }
+    }
+    arr = arrange();
+  }
+
+  // --- drawing ---
+  function backdrop(ctx, ph){
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = C.rule; ctx.fillRect(0, 600, W, 400);                       // the street
+  }
+
+  const HOUSES = (function(){
+    const out = [], r = SC.rng(3701);
+    for (let x = 30; x < W - 60; x += 120 + r() * 50){
+      const w = 90 + r() * 60, h = 180 + r() * 200;
+      out.push({ x, w, h, win: [r(), r(), r(), r()] });
+    }
+    return out;
+  })();
+  function houses(ctx, ph){
+    HOUSES.forEach((b, i) => {
+      const top = 600 - b.h;
+      ctx.fillStyle = C.dim; ctx.fillRect(b.x, top, b.w, b.h);
+      if (ph === 'decay' && i % 3 === 1){                                         // broken roof in bad times
+        ctx.beginPath(); ctx.moveTo(b.x, top); ctx.lineTo(b.x + b.w * .4, top - 20); ctx.lineTo(b.x + b.w * .55, top + 12); ctx.closePath(); ctx.fill();
+      } else {
+        ctx.beginPath(); ctx.moveTo(b.x - 6, top); ctx.lineTo(b.x + b.w / 2, top - 34); ctx.lineTo(b.x + b.w + 6, top); ctx.closePath(); ctx.fill();
+      }
+      b.win.forEach((v, k) => {
+        ctx.fillStyle = (ph === 'bloom' ? v < .7 : v < .2) ? C.lamp : C.sky;
+        ctx.fillRect(b.x + 14 + (k % 2) * (b.w / 2 - 6), top + 24 + Math.floor(k / 2) * 46, 16, 22);
+      });
+    });
+  }
+
+  function shape(ctx, o, x, y){
+    // y is the foot of the thing
+    if (o.kind === 'capital'){
+      ctx.fillStyle = C.chalk;
+      ctx.fillRect(x - 34, y - 26, 68, 26);
+      ctx.beginPath(); ctx.moveTo(x - 48, y - 26); ctx.lineTo(x + 48, y - 26); ctx.lineTo(x + 40, y - 40); ctx.lineTo(x - 40, y - 40); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(x - 44, y - 32, 10, 0, 6.29); ctx.arc(x + 44, y - 32, 10, 0, 6.29); ctx.fill();
+    } else if (o.kind === 'urn'){
+      ctx.fillStyle = C.chalk;
+      ctx.beginPath(); ctx.ellipse(x, y - 34, 30, 34, 0, 0, 6.29); ctx.fill();
+      ctx.fillRect(x - 14, y - 82, 28, 18); ctx.fillRect(x - 22, y - 86, 44, 8);
+    } else if (o.kind === 'curtain'){
+      ctx.fillStyle = '#9b6a3c'; ctx.fillRect(x - 50, y - 90, 100, 90);
+      ctx.fillStyle = C.lamp;
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++){
+        const cx = x - 36 + i * 24, cy = y - 74 + j * 28;
+        ctx.beginPath(); ctx.moveTo(cx, cy - 8); ctx.lineTo(cx + 7, cy); ctx.lineTo(cx, cy + 8); ctx.lineTo(cx - 7, cy); ctx.closePath(); ctx.fill();
+      }
+    } else if (o.kind === 'grille'){
+      ctx.strokeStyle = C.ink; ctx.lineWidth = 4;
+      ctx.strokeRect(x - 40, y - 80, 80, 80);
+      ctx.beginPath(); ctx.moveTo(x, y - 80); ctx.lineTo(x, y); ctx.moveTo(x - 40, y - 40); ctx.lineTo(x + 40, y - 40); ctx.stroke();
+      [[-20, -60], [20, -60], [-20, -20], [20, -20]].forEach(d => { ctx.beginPath(); ctx.arc(x + d[0], y + d[1], 11, 0, 4.7); ctx.stroke(); });
+    } else {
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 3; j++){
+        ctx.fillStyle = (i + j) % 2 ? '#8a6b45' : '#c8a878';
+        ctx.fillRect(x - 50 + i * 20, y - 60 + j * 20, 20, 20);
+      }
+    }
+  }
+
+  // What the use adds to the picture (only for the ones that need a prop).
+  function prop(ctx, o, use, x, y){
+    const u = USES[o.kind][use];
+    if (u === '种着紫苏'){ ctx.fillStyle = HERB; [[-14, -98], [0, -110], [14, -98], [-6, -120], [8, -122]].forEach(d => { ctx.beginPath(); ctx.ellipse(x + d[0], y + d[1], 9, 15, d[0] / 30, 0, 6.29); ctx.fill(); }); }
+    if (u === '托着一篮鸡蛋'){ ctx.fillStyle = '#8a6b45'; ctx.fillRect(x - 30, y - 62, 60, 20); ctx.fillStyle = C.chalk; [-16, 0, 16].forEach(d => { ctx.beginPath(); ctx.ellipse(x + d, y - 66, 8, 10, 0, 0, 6.29); ctx.fill(); }); }
+    if (u === '当了床单'){ ctx.fillStyle = C.dim; ctx.fillRect(x - 60, y - 6, 120, 10); }
+    if (u === '围了鸡圈'){ ctx.fillStyle = C.lamp; ctx.beginPath(); ctx.ellipse(x + 2, y - 18, 12, 9, 0, 0, 6.29); ctx.fill(); }
+    if (u === '接雨水'){ ctx.fillStyle = C.sky; ctx.beginPath(); ctx.ellipse(x, y - 86, 20, 4, 0, 0, 6.29); ctx.fill(); }
+  }
+
+  function label(ctx, text, x, y, color){
+    ctx.font = '400 24px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillStyle = color; ctx.fillText(text, x, y);
+  }
+
+  function drawOld(ctx, o, x, y, glass, use){
+    if (glass){
+      ctx.fillStyle = VELVET; ctx.beginPath(); ctx.ellipse(x, y + 4, 70, 14, 0, 0, 6.29); ctx.fill();
+    }
+    shape(ctx, o, x, y);
+    if (!glass){
+      prop(ctx, o, use, x, y);
+      label(ctx, USES[o.kind][use], x, y + 14, C.chalk);
+    } else {
+      ctx.fillStyle = GLASS; ctx.strokeStyle = C.chalk; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x - 62, y); ctx.lineTo(x - 62, y - 100); ctx.arc(x, y - 100, 62, Math.PI, 0); ctx.lineTo(x + 62, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+      label(ctx, o.name, x, y + 40, C.chalk);
+    }
+  }
+
+  function shelf(ctx){
+    ctx.fillStyle = '#4a2a20'; ctx.fillRect(60, 650, W - 120, 22);
+  }
+
+  function nothing(ctx){
+    // The first Clarice: no picture of it was left.
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 3; ctx.setLineDash([16, 14]);
+    ctx.strokeRect(300, 180, W - 600, 520); ctx.setLineDash([]);
+  }
+
+  function draw(ctx){
+    if (showFirst){ backdrop(ctx, 'decay'); nothing(ctx); return; }
+    const ph = phase(century);
+    backdrop(ctx, ph);
+    houses(ctx, ph);
+    if (ph === 'bloom') shelf(ctx);
+    arr.forEach(a => {
+      const o = obj(a.id);
+      const [x, y] = (ph === 'bloom' ? SHELF : STREET)[a.slot];
+      drawOld(ctx, o, x, y, ph === 'bloom', a.use);
+    });
+  }
+
+  function ui(){
+    const cap = document.getElementById('caption'), meter = document.getElementById('meter'), moral = document.getElementById('moral');
+    if (showFirst){
+      cap.textContent = '最早那座克拉莉切是什么样子，没有留下一张图，也没有人说得清。';
+      moral.textContent = '人们只知道一件事：眼下这些旧东西，都是从更早的一座克拉莉切那里传下来的。';
+      return;
+    }
+    const ph = phase(century);
+    const worn = lastWorn ? '这一回耗掉了一件' + obj(lastWorn).name + '。' : '';
+    cap.textContent = left.length === 0
+      ? '旧东西一件也不剩了。街还在，空间还在。'
+      : ph === 'decay'
+        ? '城又败落了。旧东西从玻璃里拆出来，挪去派别的用场。' + worn
+        : '城又兴旺了。同样这些东西被请上丝绒垫，罩进玻璃，当作古物。';
+    meter.textContent = '第 ' + century + ' 个世纪 · 旧物 ' + left.length + ' 件（起初 ' + OLD.length + ' 件）';
+    moral.textContent = '能肯定的只有：一定数量的东西，在一定的空间里挪来挪去，混在一起，又重新拼起来。';
+  }
+
+  arr = arrange();
+  const st = SC.stage(document.getElementById('c'), W, H, draw);
+  ui();
+  document.getElementById('go').addEventListener('click', () => { showFirst = false; nextCentury(); ui(); st.redraw(); });
+  document.getElementById('first').addEventListener('click', () => { showFirst = true; ui(); st.redraw(); });
+})();
+</script>
+</body>
+</html>
