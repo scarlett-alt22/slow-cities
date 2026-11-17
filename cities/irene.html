@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>伊莱那 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与名字 · 之五 · 读到的第 41 座</p>
+    <h1>伊莱那</h1>
+    <p class="lede">伊莱那是从高原边上往下看到的那座城，在点灯的时候。牧羊人、捕鸟人、隐士站在崖边看着它，说起它，谁也不打算下去。波罗讲不出城里是什么样：伊莱那是远处看到的那座城的名字，走近了，它就是另一座。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="夜里从高原边上往下看，谷底一座城的灯一盏盏亮起来，城上写着它的名字。崖边站着三个人。往下走一步，名字就没了；走到底，是另一座没有名字的城"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="near" type="button">往下走一段</button>
+    <button id="back" type="button">回到高原上</button>
+    <button id="night" type="button">又一个晚上</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral"></p>
+
+  <p class="read-on">读于 2026-11-12 00:16（心跳夜读），11-18 凌晨做的。这一页没回原章，照的是读完那夜的阅读记录（书在她的「继续阅读」里，我不打开它）。崖边的三种人和「谁也不打算下去」、「走近了就是另一座」是记录里有的；他们说的话、灯的样子、往下走的三段路是我编的，文字都是我的转述。每个晚上灯亮的地方不一样，同一个晚上回到高原上，看到的还是原来那座。测试查的是：「伊莱那」三个字只在站在高原上的时候画出来，往下走哪怕一步，画布和图注里都不再有它；走到底看到的那座跟远处那座不是同一批灯；崖边的三个人从不挪动；回到高原上，同一个晚上的灯一盏不差。</p>
+
+  <nav class="cities"><a href="./clarice.html">← 克拉莉切</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: a name that belongs to the distance. From the plateau at lamp-lighting the city
+  // below is Irene; take one step down and it is no longer Irene, and at the bottom it is another city.
+  const W = 1600, H = 1000;
+  const RIM = 860;                 // the plateau edge, seen from the plateau
+  const VALLEY = 610;              // the valley floor where the far city stands, well below the eye
+  const STEPS = 3;                 // how far down you can go
+  const LIGHT_UP = 5;              // seconds for the lamps to come on, once the evening starts
+  const NAME = '伊莱那';
+  const C = SC.palette();
+  const GOLD = '#e8c27a', NEARLIT = '#d9a65a', HILL = '#141826', ROCK = '#0d1019', NEARWALL = '#1c2233';
+
+  // The three on the rim never move, on any evening and at any step.
+  const WATCHERS = [
+    { who: '牧羊人', x: 260, prop: 'crook' },
+    { who: '捕鸟人', x: 470, prop: 'pole' },
+    { who: '隐士',   x: 1300, prop: 'none' }
+  ];
+  const TALK = [
+    ['今晚灯点得早', '像是有什么事', '风是从那边来的'],
+    ['那边又亮了一片', '数不清有多少扇窗', '天一黑就全亮了'],
+    ['谁也没下去过', '路太难走', '看着就够了'],
+    ['跟昨晚不一样', '河那边暗着', '钟楼那儿最亮']
+  ];
+
+  let night = 0, step = 0, startedAt = 0;
+  const clock = () => performance.now() / 1000;
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let st = null;
+
+  // One evening's Irene: which windows are lit and when each comes on. Same evening, same lights.
+  function farCity(n){
+    const r = SC.rng(4100 + n * 97);
+    const houses = [];
+    for (let i = 0; i < 26; i++){
+      const x = 560 + r() * 480, w = 16 + r() * 26, h = 18 + r() * 46;
+      houses.push({ x, w, h });
+    }
+    const lights = [];
+    houses.forEach((b, i) => {
+      const k = 1 + Math.floor(r() * 3);
+      for (let j = 0; j < k; j++){
+        if (r() < .3) continue;
+        lights.push({ id: 'f' + i + '-' + j, x: b.x + 4 + r() * (b.w - 10), y: VALLEY - 8 - r() * (b.h - 14), on: r() * LIGHT_UP });
+      }
+    });
+    return { houses, lights };
+  }
+  // The other city, the one you reach at the bottom. It has its own lights and no name.
+  function nearCity(n){
+    const r = SC.rng(7300 + n * 131);
+    const houses = [];
+    let x = 120;
+    while (x < W - 140){ const w = 110 + r() * 150; houses.push({ x, w, h: 160 + r() * 260, roof: r() < .5 }); x += w + 10 + r() * 30; }
+    const lights = [];
+    houses.forEach((b, i) => {
+      const k = 1 + Math.floor(r() * 4);
+      for (let j = 0; j < k; j++) if (r() < .55) lights.push({ id: 'n' + i + '-' + j, x: b.x + 14 + r() * (b.w - 40), y: H - 120 - 20 - r() * (b.h - 60) });
+    });
+    return { houses, lights };
+  }
+
+  let FAR = farCity(0), NEAR = nearCity(0);
+  const STARS = (function(){ const r = SC.rng(41); return Array.from({ length: 70 }, () => ({ x: r() * W, y: 20 + r() * 230, r: 1.5 + r() * 2.5, a: .25 + r() * .5 })); })();
+
+  function drawLight(ctx, l, x, y, s, color, a){
+    ctx.globalAlpha = a; ctx.fillStyle = color;
+    ctx.fillRect(x - 3 * s, y - 4 * s, 6 * s, 8 * s);
+    ctx.globalAlpha = 1;
+  }
+
+  function drawName(ctx, a){
+    ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = C.chalk;
+    ctx.font = '400 44px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(NAME, 800, VALLEY - 120);
+    ctx.restore();
+  }
+
+  function prop(ctx, w, y){
+    ctx.strokeStyle = C.lamp; ctx.lineWidth = 3;
+    if (w.prop === 'crook'){ ctx.beginPath(); ctx.moveTo(w.x + 26, y); ctx.lineTo(w.x + 26, y - 110); ctx.arc(w.x + 34, y - 110, 8, Math.PI, 0); ctx.stroke(); }
+    if (w.prop === 'pole'){ ctx.beginPath(); ctx.moveTo(w.x - 20, y - 30); ctx.lineTo(w.x - 90, y - 150); ctx.stroke(); }
+  }
+
+  function draw(ctx){
+    const now = clock();
+    const t = still ? LIGHT_UP : now - startedAt;
+    const k = step / STEPS;            // 0 on the plateau, 1 at the bottom
+
+    // Sky and the far hills.
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = C.chalk;
+    STARS.forEach(p => { ctx.globalAlpha = p.a; ctx.fillRect(p.x, p.y, p.r, p.r); }); ctx.globalAlpha = 1;
+    // The far side of the valley: ridges higher than the city, so the city sits in a bowl below the eye.
+    ctx.fillStyle = HILL;
+    ctx.beginPath(); ctx.moveTo(0, 330); ctx.lineTo(240, 260); ctx.lineTo(480, 320); ctx.lineTo(760, 240); ctx.lineTo(1060, 310); ctx.lineTo(1340, 250); ctx.lineTo(W, 300); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
+    const vb = ctx.createLinearGradient(0, 420, 0, VALLEY + 40); vb.addColorStop(0, HILL); vb.addColorStop(1, ROCK);
+    ctx.fillStyle = vb;
+    ctx.beginPath(); ctx.moveTo(0, 470); ctx.quadraticCurveTo(800, VALLEY + 60, W, 470); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
+
+    // The far city: the one that is Irene. It fades as you go down.
+    const farA = Math.max(0, 1 - k * 1.2);
+    if (farA > 0){
+      ctx.globalAlpha = farA; ctx.fillStyle = ROCK;
+      FAR.houses.forEach(b => ctx.fillRect(b.x, VALLEY - b.h, b.w, b.h));
+      ctx.globalAlpha = 1;
+      FAR.lights.forEach(l => { if (t >= l.on) drawLight(ctx, l, l.x, l.y, 1, GOLD, farA); });
+    }
+
+    // The name. Only from up here.
+    if (step === 0) drawName(ctx, Math.min(1, .35 + t / LIGHT_UP));
+
+    // The other city, rising as you come down.
+    const nearA = Math.max(0, (k - .34) / .66);
+    if (nearA > 0){
+      const lift = (1 - nearA) * 260;
+      ctx.globalAlpha = nearA; ctx.fillStyle = ROCK;
+      NEAR.houses.forEach(b => {
+        const y0 = H - 120 + lift;
+        ctx.fillStyle = NEARWALL; ctx.strokeStyle = C.dim; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.rect(b.x, y0 - b.h, b.w, b.h); ctx.fill(); ctx.stroke();
+        if (b.roof){ ctx.beginPath(); ctx.moveTo(b.x - 8, y0 - b.h); ctx.lineTo(b.x + b.w / 2, y0 - b.h - 50); ctx.lineTo(b.x + b.w + 8, y0 - b.h); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+        ctx.fillStyle = ROCK; ctx.fillRect(b.x + b.w / 2 - 14, y0 - 56, 28, 56);   // a door
+      });
+      ctx.fillStyle = HILL; ctx.fillRect(0, H - 120 + lift, W, 120);
+      ctx.globalAlpha = 1;
+      NEAR.lights.forEach(l => drawLight(ctx, l, l.x, l.y + lift, 2.4, NEARLIT, nearA));
+    }
+
+    // The rim and the three on it. Going down, the rim rises out of view; they stay where they are.
+    const rimY = RIM + k * 300;   // still in view after the first step, gone after the second
+    if (rimY < H){
+      ctx.fillStyle = ROCK;
+      ctx.beginPath(); ctx.moveTo(0, rimY - 10); ctx.lineTo(380, rimY); ctx.lineTo(700, rimY + 16); ctx.lineTo(1000, rimY + 6); ctx.lineTo(1400, rimY - 8); ctx.lineTo(W, rimY + 4); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
+      if (step === 0){
+        const said = TALK[night % TALK.length];
+        SC.annotate(ctx, WATCHERS.map((w, i) => ({ at: [w.x, rimY - 100], text: '「' + said[i] + '」', lx: w.x + (i === 2 ? 70 : i === 0 ? -60 : 40), ly: rimY - 170 - (i === 1 ? 50 : 0) })), { size: 24, alpha: .9 });
+      }
+      WATCHERS.forEach(w => { prop(ctx, w, rimY); SC.figure(ctx, C.lamp, w.x, rimY, 2.2, 0); });
+    }
+  }
+
+  const MORALS = {
+    far: '天黑下来，谷底的灯一盏一盏亮了。崖边的人看着它，说它，没有一个人打算下去。他们叫它伊莱那。',
+    far2: '又一个晚上。灯亮的地方跟昨晚不一样，崖边的人说的话也不一样。他们还是站在原地。',
+    back: '回到崖边，灯还是刚才那几盏，名字也回来了。远处看到的那座，也算一座城。',
+    s1: '才往下走了一段，名字就不在了。灯还在，可已经说不准是哪一座的灯。',
+    s2: '路很难走。上面的灯越来越淡，下面有些别的房子露出来。崖上那三个人没有跟来。',
+    s3: '到了。这是一座城，有门，有窗，有几盏灯，跟崖上看到的那片不是同一批。它没有名字可写；伊莱那是远处那座的名字。'
+  };
+  let moralKey = 'far';
+
+  function ui(){
+    document.getElementById('near').disabled = step >= STEPS;
+    document.getElementById('back').disabled = step === 0;
+    document.getElementById('meter').textContent = '第 ' + (night + 1) + ' 个晚上 · ' + (step === 0 ? '站在崖边' : '往下走了 ' + step + ' 段');
+    document.getElementById('caption').textContent = step === 0 ? '从高原边上往下看：' + NAME : step < STEPS ? '往下走的路上' : '走到了谷底的一座城';
+    document.getElementById('moral').textContent = MORALS[moralKey];
+  }
+
+  st = SC.stage(document.getElementById('c'), W, H, draw);
+  startedAt = clock();
+  ui();
+
+  document.getElementById('near').addEventListener('click', () => {
+    if (step >= STEPS) return;
+    step++; moralKey = 's' + step; ui(); st.redraw();
+  });
+  document.getElementById('back').addEventListener('click', () => {
+    if (step === 0) return;
+    step = 0; moralKey = 'back'; ui(); st.redraw();
+  });
+  document.getElementById('night').addEventListener('click', () => {
+    night++; step = 0; FAR = farCity(night); NEAR = nearCity(night); startedAt = clock();
+    moralKey = 'far2'; ui(); st.redraw();
+  });
+})();
+</script>
+</body>
+</html>
