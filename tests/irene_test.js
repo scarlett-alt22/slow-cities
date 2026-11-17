@@ -4,11 +4,12 @@
 // ① 站在崖边时，画布上写着「伊莱那」，图注里也有
 // ② 往下走哪怕一步，画布、图注、读数里都不再出现「伊莱那」（六个晚上、每一段都查）
 // ③ 走到底看到的灯，跟崖上看到的不是同一批（编号不同，位置也没有一盏重合）
-// ④ 崖边三个人从不挪动：每一帧的横坐标都一样，往下走时也一样
+// ④ 崖边四个人（旅人、牧人、捕鸟人、隐士）从不挪动：每一帧的横坐标都一样，往下走时也一样
 // ⑤ 回到崖边，同一个晚上的灯一盏不差（编号和位置都一样），名字回来
 // ⑥ 换一个晚上，灯亮的地方变了
 // ⑦ 点灯的时候：刚开始只亮几盏，过一会儿才全亮
 // ⑧ 到了谷底「往下走」按不动，在崖边「回到高原上」按不动
+// ⑨ 连着四个晚上，过节（鼓和小号）、打仗（机关枪）、起雾、晴天各有一回，图注里都还写着名字
 // 变异（自检用）：MUT=1..7 各弄坏一处，这个文件必须以非 0 退出。
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
@@ -23,10 +24,11 @@ if (MUT === '3') swap("SC.figure(ctx, C.lamp, w.x, rimY", "SC.figure(ctx, C.lamp
 if (MUT === '4') swap("step = 0; moralKey = 'back';", "step = 0; FAR = farCity(night + 1); moralKey = 'back';");
 if (MUT === '5') swap("FAR = farCity(night); NEAR", "FAR = farCity(0); NEAR");
 if (MUT === '6') swap("'往下走的路上'", "NAME + '，往下走的路上'");
+if (MUT === '8') swap("const kind = () => KINDS[night % KINDS.length];", "const kind = () => KINDS[0];");
 if (MUT === '7') swap("if (t >= l.on) drawLight(", "if (true) drawLight(");
 
 function hook(a, b){ if (!inline.includes(a)) throw new Error('hook point missing: ' + a); inline = inline.replace(a, b); }
-hook("  function drawLight(ctx, l, x, y, s, color, a){\n", "  function drawLight(ctx, l, x, y, s, color, a){\n    ctx.__mark('light', l.id, Math.round(x), Math.round(y));\n");
+hook("  function drawLight(ctx, l, x, y, s, color, a, fog){\n", "  function drawLight(ctx, l, x, y, s, color, a, fog){\n    ctx.__mark('light', l.id, Math.round(x), Math.round(y));\n");
 
 const NAME = '伊莱那';
 const els = {}, handlers = {};
@@ -84,12 +86,14 @@ check(els.back.disabled === true, '⑧ 在崖边「回到高原上」按不动')
 const figX0 = F0.figs.slice();
 let figFramesDown = 0, nameLeak = '', figMoved = '', farIdsAtBottom = 0, overlap = 0, backOk = true, nightsDiffer = true, bottomCount = 0;
 let prevFarKey = lightKey(F0.lights);
+const capsAtRim = [els.caption.textContent];
 for (let n = 0; n < 6; n++){
   if (n > 0){
     press('night'); nowMs += 10000;
     const Fn = redraw();
     if (!hasName(Fn)) nameLeak = nameLeak || '第 ' + (n + 1) + ' 个晚上崖边没有名字';
     if (lightKey(Fn.lights) === prevFarKey) nightsDiffer = false;
+    if (n < 4) capsAtRim.push(els.caption.textContent);
     prevFarKey = lightKey(Fn.lights);
   }
   const farHere = redraw();
@@ -116,11 +120,14 @@ for (let n = 0; n < 6; n++){
 }
 check(!nameLeak, '② 往下走哪怕一步，画布、图注、读数里都没有「伊莱那」' + (nameLeak ? '（' + nameLeak + '出现了）' : '（六个晚上 × 三段）'));
 check(farIdsAtBottom === 0 && overlap === 0 && bottomCount > 0, '③ 谷底的灯跟崖上那批不是同一批（谷底这一晚 ' + bottomCount + ' 盏，崖上的编号混进来 ' + farIdsAtBottom + ' 盏，位置重合 ' + overlap + ' 盏）');
-check(!figMoved && figX0.length === 3 && figFramesDown > 0, '④ 崖边三个人从不挪动（往下走时有 ' + figFramesDown + ' 帧画到了他们）' + (figMoved ? '（' + figMoved + '动了）' : ''));
+check(!figMoved && figX0.length === 4 && figFramesDown > 0, '④ 崖边四个人从不挪动（往下走时有 ' + figFramesDown + ' 帧画到了他们）' + (figMoved ? '（' + figMoved + '动了）' : ''));
 check(backOk, '⑤ 回到崖边，同一个晚上的灯一盏不差，名字回来');
 check(nightsDiffer, '⑥ 换一个晚上，灯亮的地方变了');
+const four = capsAtRim.slice(0, 4);
+check(four.every(c => c.includes(NAME)) && four.some(c => /小号/.test(c)) && four.some(c => /机关枪/.test(c)) && four.some(c => /雾/.test(c)) && four.some(c => !/小号|机关枪|雾/.test(c)),
+  '⑨ 连着四个晚上，过节、打仗、起雾、晴天各有一回（' + four.map(c => c.replace('从高原边上往下看：', '')).join(' ／ ') + '）');
 
 console.log(fail ? fail + ' 条没过' : '全过');
 process.exit(fail ? 1 : 0);
 // 跑：node tests/irene_test.js cities/irene.html shared.js
-// 变异：for m in 1 2 3 4 5 6 7; do MUT=$m node tests/irene_test.js cities/irene.html shared.js >/dev/null 2>&1 && echo "MUT=$m 没抓到" || echo "MUT=$m 抓到"; done
+// 变异：for m in 1 2 3 4 5 6 7 8; do MUT=$m node tests/irene_test.js cities/irene.html shared.js >/dev/null 2>&1 && echo "MUT=$m 没抓到" || echo "MUT=$m 抓到"; done
