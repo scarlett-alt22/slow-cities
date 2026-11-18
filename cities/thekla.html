@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>泰克拉 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与天空 · 之三 · 读到的第 43 座</p>
+    <h1>泰克拉</h1>
+    <p class="lede">泰克拉从外面看只有围墙、帆布、脚手架、梯子和桁架，起重机吊着别的起重机，架子撑着别的架子。问居民为什么建这么久，他们手上不停，答：为了不让毁灭开始。问蓝图在哪，他们说等今天收了工再给你看。天黑了，他们指着满天的星星。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="一片脚手架，下面是木板围墙。天黑以后，脚手架的每个接头上都是一颗星"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="work" type="button">还不能停手</button>
+    <span class="meter" id="meter"></span>
+  </div>
+  <div class="controls">
+    <button id="why" type="button">为什么建这么久？</button>
+    <button id="down" type="button">拆了脚手架会怎样？</button>
+    <button id="plan" type="button">蓝图在哪里？</button>
+  </div>
+
+  <p class="moral" id="moral"></p>
+
+  <p class="read-on">读于 2026-11-12 00:23（心跳夜读），2026-11-19 做的，动手前回原章核过。白天每过一秒多一个接头，一天五个，做完才能收工；收工以后天黑下来，脚手架变淡，每个接头底下都是一颗星。接头全是从同一张星图里取的：星图在页面打开时就定了，从来不看脚手架长成什么样。测试查的就是这一条，还有拆不得：昨天的每一根梁，今天都还在。星星用完了照样上工，在已有的接头之间加斜撑，所以这里没有建成的一天。水桶、铅垂线、长刷子，起重机吊着起重机，都是书里的；人站在哪儿、星图长什么样是我定的。文字是我的转述，只有「为了不让毁灭开始」照原文。系统设了减少动效时，一天的活一下子做完，天也一下子黑。</p>
+
+  <nav class="cities"><a href="./irene.html">← 伊莱那</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: a city that is only ever being built, so that the destruction cannot begin.
+  // Its plan is the night sky: every joint of the scaffolding is a star.
+  const W = 1600, H = 1000, GROUND = 880, FENCE = 790;
+  const NSTAR = 320, PER_DAY = 5, STEP = 1.0, DUSK = 3, PAST = 60;
+  const WOOD = '#b08a5a', CRANE = '#d9c27a', BOARD = '#3a2f28', EARTH = '#1d1a1f';
+  const C = SC.palette();
+
+  // The star map. Made once, here, before any scaffolding exists; nothing below ever writes to it.
+  const rs = SC.rng(43);
+  const STARS = Object.freeze(Array.from({ length: NSTAR }, () => Object.freeze({
+    x: Math.round(120 + rs() * 1360), y: Math.round(70 + rs() * 650), r: 1.4 + rs() * 2.2 })));
+  const d2 = (a, b) => (STARS[a].x - STARS[b].x) ** 2 + (STARS[a].y - STARS[b].y) ** 2;
+
+  // The order of work, read off the map: start low in the middle, then always the nearest
+  // star not yet reached (Prim). Each new joint gets a beam to the joint it grew from and,
+  // if one is nearly as close, a second. Low joints get a post down to the ground.
+  const STEPS = [];
+  (function plan(){
+    let start = 0;
+    STARS.forEach((s, i) => { if (s.y - Math.abs(s.x - 800) * .4 > STARS[start].y - Math.abs(STARS[start].x - 800) * .4) start = i; });
+    const inT = new Array(NSTAR).fill(false), best = new Array(NSTAR).fill(Infinity), par = new Array(NSTAR).fill(-1), built = [start];
+    inT[start] = true;
+    STEPS.push({ node: start, beams: [], post: true });
+    for (let j = 0; j < NSTAR; j++) if (!inT[j]){ best[j] = d2(start, j); par[j] = start; }
+    while (built.length < NSTAR){
+      let j = -1;
+      for (let k = 0; k < NSTAR; k++) if (!inT[k] && (j < 0 || best[k] < best[j])) j = k;
+      const beams = [[par[j], j]];
+      let second = -1;
+      built.forEach(b => { if (b !== par[j] && (second < 0 || d2(b, j) < d2(second, j))) second = b; });
+      if (second >= 0 && d2(second, j) < best[j] * 2.6) beams.push([second, j]);
+      STEPS.push({ node: j, beams, post: STARS[j].y > GROUND - 260 });
+      inT[j] = true; built.push(j);
+      for (let k = 0; k < NSTAR; k++) if (!inT[k] && d2(j, k) < best[k]){ best[k] = d2(j, k); par[k] = j; }
+    }
+    // When the stars run out, the work goes on: braces between joints that are not yet tied.
+    const have = new Set();
+    STEPS.forEach(s => s.beams.forEach(([a, b]) => have.add(Math.min(a, b) + ',' + Math.max(a, b))));
+    const extra = [];
+    for (let a = 0; a < NSTAR; a++) for (let b = a + 1; b < NSTAR; b++)
+      if (!have.has(a + ',' + b) && d2(a, b) < 170 * 170) extra.push([a, b]);
+    extra.sort((p, q) => d2(p[0], p[1]) - d2(q[0], q[1]));
+    extra.forEach(p => STEPS.push({ node: -1, beams: [p], post: false }));
+  })();
+
+  const clock = () => performance.now() / 1000;
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let day = 1, base = PAST, done = PAST, phase = 'day', dayAt = clock(), duskAt = 0, timer = null, asked = '';
+  let st = null;
+
+  const target = () => Math.min(STEPS.length, base + PER_DAY);
+  const night = now => phase === 'day' ? 0 : still ? 1 : Math.min(1, (now - duskAt) / DUSK);
+
+  function work(now){
+    if (phase !== 'day') return;
+    const want = still ? target() : Math.min(target(), base + Math.floor((now - dayAt) / STEP));
+    if (want > done) done = want;
+    if (done >= target() && timer){ clearInterval(timer); timer = null; }
+  }
+
+  function draw(ctx, t){
+    const now = clock(), n = night(now);
+    // Sky: the night palette, with the day laid over it until dusk takes it away.
+    let g = ctx.createLinearGradient(0, 0, 0, GROUND); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, GROUND);
+    if (n < 1){
+      g = ctx.createLinearGradient(0, 0, 0, GROUND); g.addColorStop(0, '#6f7c96'); g.addColorStop(1, '#b9b2a2');
+      ctx.globalAlpha = 1 - n; ctx.fillStyle = g; ctx.fillRect(0, 0, W, GROUND); ctx.globalAlpha = 1;
+    }
+
+    // The stars: only once the day's light has gone.
+    if (n > 0){
+      ctx.fillStyle = C.ink; ctx.globalAlpha = n;
+      STARS.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.29); ctx.fill(); });
+      ctx.globalAlpha = 1;
+    }
+
+    // The scaffolding. Every beam runs from star to star; posts run from a star to the ground.
+    const fade = 1 - .7 * n;
+    ctx.strokeStyle = WOOD; ctx.lineCap = 'round'; ctx.globalAlpha = fade;
+    ctx.lineWidth = 4; ctx.beginPath();
+    for (let i = 0; i < done; i++){
+      const s = STEPS[i];
+      s.beams.forEach(([a, b]) => { ctx.moveTo(STARS[a].x, STARS[a].y); ctx.lineTo(STARS[b].x, STARS[b].y); });
+    }
+    ctx.stroke();
+    ctx.lineWidth = 3; ctx.beginPath();
+    for (let i = 0; i < done; i++){
+      const s = STEPS[i];
+      if (s.post){ ctx.moveTo(STARS[s.node].x, STARS[s.node].y); ctx.lineTo(STARS[s.node].x, GROUND); }
+    }
+    ctx.stroke();
+
+    // Cranes lifting cranes, from the two highest joints so far.
+    const tops = [];
+    for (let i = 0; i < done; i++) if (STEPS[i].node >= 0) tops.push(STEPS[i].node);
+    tops.sort((a, b) => STARS[a].y - STARS[b].y);
+    ctx.strokeStyle = CRANE; ctx.lineWidth = 2.5;
+    tops.slice(0, 2).forEach((j, k) => {
+      let x = STARS[j].x, y = STARS[j].y, s = 1, dir = k ? -1 : 1;
+      const sw = still ? 0 : Math.sin(t * .7 + k * 2) * 6;
+      for (let level = 0; level < 3; level++){
+        ctx.beginPath();
+        ctx.moveTo(x, y); ctx.lineTo(x, y - 80 * s);                       // mast
+        ctx.moveTo(x - 30 * s * dir, y - 80 * s); ctx.lineTo(x + 120 * s * dir, y - 80 * s);   // jib
+        const hx = x + 105 * s * dir, hy = y - 80 * s + 50 * s + sw * s;
+        ctx.moveTo(hx, y - 80 * s); ctx.lineTo(hx + sw * s * .3, hy);     // hook rope
+        ctx.stroke();
+        x = hx + sw * s * .3; y = hy + 80 * s * .55; s *= .55; dir = -dir;  // the next crane hangs from the hook
+      }
+    });
+
+    // People at work, by day: a bucket going up, a plumb line going down, a long brush.
+    if (n < 1){
+      ctx.globalAlpha = 1 - n;
+      const low = tops.length ? tops[tops.length - 1] : STEPS[0].node;
+      const lx = STARS[low].x, ly = STARS[low].y;
+      const up = still ? .5 : (Math.sin(t * .9) + 1) / 2;
+      const by = FENCE - 20 - up * (FENCE - 60 - ly);
+      ctx.strokeStyle = C.chalk; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx, by); ctx.stroke();
+      ctx.fillStyle = C.lamp; ctx.fillRect(lx - 9, by, 18, 16);
+      const hi = tops[Math.min(tops.length - 1, 3)] ?? low;
+      const px = STARS[hi].x + 14, py = STARS[hi].y, swing = still ? 0 : Math.sin(t * 2.1) * 10;
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + swing, py + 170); ctx.stroke();
+      ctx.beginPath(); ctx.arc(px + swing, py + 176, 6, 0, 6.29); ctx.fillStyle = C.chalk; ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // The hoarding: boards and a strip of sailcloth, in front of everything.
+    ctx.fillStyle = BOARD; ctx.fillRect(0, FENCE, W, GROUND - FENCE);
+    ctx.strokeStyle = '#4c3f35'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let x = 40; x < W; x += 46){ ctx.moveTo(x, FENCE); ctx.lineTo(x, GROUND); }
+    ctx.stroke();
+    ctx.fillStyle = '#5a5248'; ctx.globalAlpha = .55; ctx.fillRect(560, FENCE + 14, 300, 52); ctx.globalAlpha = 1;
+    ctx.fillStyle = EARTH; ctx.fillRect(0, GROUND, W, H - GROUND);
+    if (n < 1){
+      ctx.globalAlpha = 1 - n;
+      const brush = still ? 0 : Math.sin(t * 1.6) * .5;
+      SC.figure(ctx, C.lamp, STARS[STEPS[0].node].x - 60, GROUND, 2.2, 0);
+      SC.figure(ctx, C.chalk, 1180, GROUND, 2.2, 0);
+      ctx.save(); ctx.translate(1180 + 24, GROUND - 74); ctx.rotate(-.9 + brush);
+      ctx.strokeStyle = C.chalk; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -150); ctx.stroke();
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  const ANSWER = {
+    why: '「为了不让毁灭开始。」他们说这话的时候，手上的水桶、铅垂线和刷子都没停。',
+    down: '他们怕一拆脚手架，城就会塌成碎块。又压低声音补了一句：不光是城。',
+    planDay: '等今天收了工就给你看，现在不能停手。',
+    planNight: '他们指着天：喏，这就是蓝图。'
+  };
+
+  function ui(now){
+    const n = night(now), ready = done >= target();
+    const btn = document.getElementById('work');
+    if (phase === 'day'){ btn.textContent = ready ? '收工' : '还不能停手'; btn.disabled = !ready; }
+    else { btn.textContent = '天亮，开工'; btn.disabled = false; }
+    const beams = STEPS.slice(0, done).reduce((k, s) => k + s.beams.length, 0);
+    const joints = STEPS.slice(0, done).filter(s => s.node >= 0).length;
+    document.getElementById('meter').textContent = '第 ' + day + ' 天 · 接头 ' + joints + ' · 梁 ' + beams;
+    document.getElementById('caption').textContent = phase === 'day'
+      ? (ready ? '今天的活做完了' : '泰克拉，白天，在建')
+      : n < 1 ? '收工了，天在黑下来' : '喏，这就是蓝图。';
+    let m = '泰克拉在建。你看得到的只有围墙、帆布和脚手架。';
+    if (asked === 'why') m = ANSWER.why;
+    else if (asked === 'down') m = ANSWER.down;
+    else if (asked === 'plan') m = phase === 'day' ? ANSWER.planDay : ANSWER.planNight;
+    else if (phase !== 'day') m = '天黑了。脚手架淡下去，每个接头底下都是一颗星，还有更多的星没接上。';
+    document.getElementById('moral').textContent = m;
+  }
+
+  function tick(){ const now = clock(); work(now); ui(now); st.redraw(); }
+
+  st = SC.stage(document.getElementById('c'), W, H, draw);
+  if (!still) timer = setInterval(tick, 200);
+  work(clock()); ui(clock());
+
+  document.getElementById('work').addEventListener('click', () => {
+    const now = clock();
+    work(now);
+    if (phase === 'day'){
+      if (done < target()) return;                 // 现在不能停手
+      phase = 'dusk'; duskAt = now;
+      if (!still){ clearInterval(timer); timer = setInterval(() => { ui(clock()); st.redraw(); }, 200); }
+    } else {
+      phase = 'day'; day++; base = done; dayAt = now;
+      if (timer) clearInterval(timer);
+      timer = still ? null : setInterval(tick, 200);
+      work(now);
+    }
+    asked = ''; ui(now); st.redraw();
+  });
+  ['why', 'down', 'plan'].forEach(id => document.getElementById(id).addEventListener('click', () => { asked = id; ui(clock()); }));
+})();
+</script>
+</body>
+</html>
