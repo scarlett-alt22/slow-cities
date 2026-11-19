@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>欧林达 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">隐蔽的城市 · 之一 · 读到的第 45 座</p>
+    <h1>欧林达</h1>
+    <p class="lede">在欧林达，拿放大镜找，能找到针头大的一个点，里面有屋顶、天线、天窗、花园和水池、挂在街上的横幅、广场上的报亭、赛马场。过一年它有半个柠檬大，然后像一朵牛肝菌，像一只汤盘，然后是一座自然大小的城，封在原来那座城里面。别的城新区绕在外面；欧林达的新城从正中心长出来，旧城墙和旧城区一起被往外撑。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="从上往下看的一座圆城，一圈套一圈。最外圈最老，最里面是针头大的一个点；点一下画面，用放大镜看那一处"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="year" type="button">过一年</button>
+    <button id="lens" type="button">拿放大镜</button>
+    <span class="meter" id="meter"></span>
+  </div>
+  <div class="controls">
+    <button id="other" type="button">别的城不也是一圈一圈长的吗？</button>
+    <button id="core" type="button">最里面是什么？</button>
+    <button id="next" type="button">下一座在哪儿？</button>
+  </div>
+
+  <p class="moral" id="moral"></p>
+
+  <p class="read-on">读于 2026-11-12 00:29（心跳夜读），2026-11-20 做的，动手前回原章核过。从上往下看，每一圈是一座欧林达，最外圈最老。每过一年，正中心冒出一个针头大的点，它照书里的次序长：半个柠檬、牛肝菌、汤盘，第五年是自然大小，以后不再长。它长大，外面每一圈都被往外推。一圈城的面积长足了就不变，被推到更大的半径上，周长变长，圈就变细：书里说的「变细了一些」，我是这么读的。每一圈都有同样那七样东西，刚冒出来的那个点里也有，只是要用放大镜才看得见。测试查的是：新的只在正中心出现，旧的一圈不少、次序不乱、只往外走，长足了的圈面积不变、宽度只减不增，每一圈都有那七样东西而且都在自己的圈里。哪样东西摆在圈里哪个位置、颜色、一年一座的节奏是我定的。文字是我的转述。系统设了减少动效时，过一年就一下子到下一年。</p>
+
+  <nav class="cities"><a href="./thekla.html">← 泰克拉</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: the new city only ever starts at the very centre; the old ones, walls and all,
+  // are pushed outward in proportion and grow thinner to make room. Nothing is added outside.
+  const W = 1600, H = 1000, CX = 800, CY = 500;
+  const STAGE = [3, 12, 24, 40, 120];          // pinhead, half a lemon, a porcini, a soup plate, full size
+  const NAMES = ['针头', '半个柠檬', '一朵牛肝菌', '一只汤盘'];
+  const YEAR_S = 1.6, ZOOM = 10, LENS_R = 190;
+  const WALL = '#8c7f6a', POOL = '#6fa3c8', POST = '#b9b2a2';
+  // The seven things every Olinda has, from the first to the newest. One colour each.
+  const KIND = ['#c8765a', '#a9b4c2', '#e8d9a0', '#5f8a5a', '#c94c4c', '#d9b36a', '#b9a38a'];
+  const C = SC.palette();
+
+  // Ring k = the k-th Olinda. Ring 0 is the city that was already there; ring k (k >= 1)
+  // appears at the centre in year k - 1.
+  function size(k, Y){
+    if (k === 0) return STAGE[4];
+    const age = Y - (k - 1);
+    if (age < 0) return 0;
+    if (age >= 4) return STAGE[4];
+    const i = Math.floor(age), f = age - i, e = f * f * (3 - 2 * f);
+    return Math.exp(Math.log(STAGE[i]) * (1 - e) + Math.log(STAGE[i + 1]) * e);
+  }
+  // Each ring is an annulus whose area is that of a disc of its size. Stack them from the
+  // centre outward, newest first: whatever grows inside pushes everything outside it.
+  function layout(Y){
+    const n = Math.floor(Y + 1e-9) + 2, out = [];
+    let rin = 0;
+    for (let k = n - 1; k >= 0; k--){
+      const s = size(k, Y), rout = Math.sqrt(rin * rin + s * s);
+      out.push({ k, rin, rout, age: k === 0 ? Infinity : Y - (k - 1) });
+      rin = rout;
+    }
+    return out;                                   // newest (innermost) first
+  }
+
+  const things = [];                              // where each ring keeps its seven things, fixed at birth
+  function thingsOf(k){
+    if (!things[k]){
+      const r = SC.rng(4500 + k), list = [];
+      for (let kind = 0; kind < KIND.length; kind++) for (let c = 0; c < 4; c++)
+        list.push({ kind, a: r() * Math.PI * 2, p: .2 + .6 * r() });
+      things[k] = list;
+    }
+    return things[k];
+  }
+
+  function glyph(ctx, kind, x, y, s){
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    ctx.beginPath();
+    if (kind === 0){ ctx.fillStyle = KIND[0]; ctx.moveTo(-6, 3); ctx.lineTo(0, -5); ctx.lineTo(6, 3); ctx.closePath(); ctx.fill(); }   // roof
+    else if (kind === 1){ ctx.strokeStyle = KIND[1]; ctx.lineWidth = 1.2; ctx.moveTo(0, 5); ctx.lineTo(0, -6); ctx.moveTo(-4, -3); ctx.lineTo(4, -3); ctx.stroke(); }  // aerial
+    else if (kind === 2){ ctx.strokeStyle = KIND[2]; ctx.lineWidth = 1.2; ctx.strokeRect(-3, -3, 6, 6); }           // skylight
+    else if (kind === 3){ ctx.fillStyle = KIND[3]; ctx.arc(0, 0, 5, 0, 6.29); ctx.fill();                             // garden
+      ctx.beginPath(); ctx.fillStyle = POOL; ctx.arc(1.5, .5, 2, 0, 6.29); ctx.fill(); }                               // and its pool
+    else if (kind === 4){ ctx.fillStyle = KIND[4]; ctx.fillRect(-5, -5, 10, 3);                                       // banner over a street
+      ctx.strokeStyle = POST; ctx.lineWidth = 1; ctx.moveTo(-5, -5); ctx.lineTo(-5, 5); ctx.moveTo(5, -5); ctx.lineTo(5, 5); ctx.stroke(); }
+    else if (kind === 5){ ctx.fillStyle = KIND[5]; ctx.fillRect(-3, -4, 6, 8); }                                      // news kiosk
+    else { ctx.strokeStyle = KIND[6]; ctx.lineWidth = 1.2; ctx.ellipse(0, 0, 7, 4, 0, 0, 6.29); ctx.stroke(); }      // racecourse
+    ctx.restore();
+  }
+
+  function scene(ctx, rings, z){
+    // Bands: oldest disc first, each newer one laid inside it.
+    for (let i = rings.length - 1; i >= 0; i--){
+      const g = rings[i];
+      ctx.fillStyle = g.age < 4 ? '#3a3128' : (g.k % 2 ? '#2a2730' : '#312d36');
+      ctx.beginPath(); ctx.arc(CX, CY, g.rout, 0, 6.29); ctx.fill();
+    }
+    // Walls: one round each ring, the old walls carried outward with their districts.
+    ctx.strokeStyle = WALL; ctx.lineWidth = 2 / z;
+    rings.forEach(g => { ctx.beginPath(); ctx.arc(CX, CY, g.rout, 0, 6.29); ctx.stroke(); });
+    // The seven things, in every ring, sized by how wide the ring is now.
+    rings.forEach(g => {
+      const w = g.rout - g.rin, s = Math.max(.03, Math.min(1.4, w * .035));
+      thingsOf(g.k).forEach(t => {
+        const r = g.rin + t.p * w;
+        glyph(ctx, t.kind, CX + r * Math.cos(t.a), CY + r * Math.sin(t.a), s);
+      });
+    });
+  }
+
+  const clock = () => performance.now() / 1000;
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let Y = 0, target = 0, last = clock(), lens = false, L = { x: CX, y: CY }, asked = '';
+  let st = null;
+
+  function draw(ctx){
+    const now = clock();
+    Y = still ? target : Math.min(target, Y + Math.max(0, now - last) / YEAR_S);
+    last = now;
+    const rings = layout(Y);
+    ctx.fillStyle = C.sky; ctx.fillRect(0, 0, W, H);
+    scene(ctx, rings, 1);
+    if (lens){
+      // What the glass sees is shown off to one side, so the city itself stays in view.
+      const ix = L.x < W / 2 ? W - 220 : 220, iy = L.y < H / 2 ? H - 220 : 220, r = LENS_R / ZOOM;
+      ctx.strokeStyle = C.chalk; ctx.lineWidth = 2; ctx.globalAlpha = .7;
+      ctx.beginPath(); ctx.arc(L.x, L.y, r, 0, 6.29); ctx.stroke();
+      const dx = ix - L.x, dy = iy - L.y, dd = Math.hypot(dx, dy) || 1;
+      ctx.beginPath(); ctx.moveTo(L.x + dx / dd * r, L.y + dy / dd * r); ctx.lineTo(ix - dx / dd * LENS_R, iy - dy / dd * LENS_R); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(ix, iy, LENS_R, 0, 6.29); ctx.clip();
+      ctx.fillStyle = C.sky; ctx.fillRect(ix - LENS_R, iy - LENS_R, 2 * LENS_R, 2 * LENS_R);
+      ctx.translate(ix, iy); ctx.scale(ZOOM, ZOOM); ctx.translate(-L.x, -L.y);
+      scene(ctx, rings, ZOOM);
+      ctx.restore();
+      ctx.strokeStyle = C.chalk; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(ix, iy, LENS_R, 0, 6.29); ctx.stroke();
+    }
+    ui(rings);
+  }
+
+  const ANSWER = {
+    other: '别的城也一圈圈长，可旧城墙里圈着的是钟楼、尖塔和大圆顶，新区像松开的腰带，松松垮垮地绕在外面。欧林达反过来：旧城墙跟着旧城区一起往外撑，圈住的是更新的城区。',
+    core: '一座全新的欧林达，小了一号。最早那座有的，后来每一座有的，它都有。',
+    next: '已经在了。最中间那一圈的正中心，不拿放大镜几乎看不见。'
+  };
+  const set = (id, v) => { const e = document.getElementById(id); if (e.textContent !== v) e.textContent = v; };
+
+  function ui(rings){
+    const year = Math.floor(Y + 1e-9);
+    set('meter', '第 ' + year + ' 年 · ' + rings.length + ' 座欧林达');
+    const young = rings.filter(g => g.age < 4).map(g => NAMES[Math.floor(g.age)]);
+    const full = rings.length - young.length;
+    set('caption', '从里往外：' + young.join(' · ') + '，再往外 ' + full + ' 圈是自然大小的城');
+    set('lens', lens ? '放下放大镜' : '拿放大镜');
+    let m = '点一下画面，用放大镜看那一处。正中心那个针头大的点里，屋顶、天线、天窗、花园、横幅、报亭、赛马场都有。';
+    if (asked) m = ANSWER[asked];
+    set('moral', m);
+  }
+
+  st = SC.stage(document.getElementById('c'), W, H, draw);
+  const redraw = () => { if (st) st.redraw(); };
+  redraw();
+
+  document.getElementById('year').addEventListener('click', () => { target += 1; asked = ''; redraw(); });
+  document.getElementById('lens').addEventListener('click', () => { lens = !lens; if (lens){ L = { x: CX, y: CY }; } redraw(); });
+  document.getElementById('c').addEventListener('click', e => {
+    const r = e.currentTarget.getBoundingClientRect();
+    L = { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+    lens = true; redraw();
+  });
+  ['other', 'core', 'next'].forEach(id => document.getElementById(id).addEventListener('click', () => { asked = id; redraw(); }));
+})();
+</script>
+</body>
+</html>
