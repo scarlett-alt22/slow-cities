@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>贝尔萨贝阿 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与天空 · 之二 · 读到的第 39 座</p>
+    <h1>贝尔萨贝阿</h1>
+    <p class="lede">贝尔萨贝阿的人世代相信：城的上空还有一座贝尔萨贝阿，黄金造的，银门锁、钻石城门；地下还有一座，装着一切卑劣丑恶的东西，屋顶像开口朝下的垃圾筒，脏东西一层层堆成一座歪顶的粪便城。所以他们攒金子和宝石，端着仪态，一刻不敢松懈。他们信对了一半：城上城下确实各有一座。错的是里面装的是什么。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="三层：天上、地上的城、地下。地上的人往上供的金子沉到地下，随手扔的东西飘到天上"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="offer" type="button">攒一样贵重的</button>
+    <button id="toss" type="button">随手扔一样</button>
+    <button id="ease" type="button">难得松快一回</button>
+    <span class="meter" id="meter"></span>
+  </div>
+  <div class="controls">
+    <button id="look" type="button">掀开看实情</button>
+  </div>
+  <div class="controls">
+    <button id="where" type="button">供的东西去哪了？</button>
+    <button id="star" type="button">天上那颗是什么做的？</button>
+    <button id="tail" type="button">它的尾巴呢？</button>
+  </div>
+
+  <p class="moral" id="moral"></p>
+
+  <p class="read-on">读于 2026-11-11 20:07（心跳夜读），2026-11-21 做的，动手前回原章核过。三层：天上、地上的城、地下。一开始画的是他们信的样子：天上一座虚线的黄金城，地下一座虚线的粪便城，实情淡淡地在底下。按「攒一样贵重的」，地上的人捧起一块金子往上举，它升一点就往下沉，穿过地面，变成地下那座城的一个零件：齿轮、钟、管子，每样都挂着流苏。按「随手扔一样」，照书里的次序扔出马铃薯皮、破伞、旧袜子……它们往上飘，聚到天上那颗星旁边。「难得松快一回」给那颗星的尾巴添一截：书里说那条长尾巴是这城的人在唯一不小气的时刻排出来的。掀开以后虚线没了，实情亮起来。测试查的是：供的东西没有一样到过天上那一层，都落在地下；扔的东西都到了天上；地下的零件数正好是供的次数，天上的杂物数正好是扔的次数，尾巴段数正好是松快的次数；掀开、盖上不改变任何一样东西。零件的样子、摆放、颜色、几个人站在哪儿是我定的。文字是我的转述。系统设了减少动效时，东西不飞，直接到它该到的地方。</p>
+
+  <nav class="cities"><a href="./olinda.html">← 欧林达</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: what they raise toward heaven sinks and becomes the fine city below;
+  // what they throw away rises and becomes the star above. The two cities exist; their contents are swapped.
+  const W = 1600, H = 1000;
+  const SKY_B = 300, SURFACE = 600, UNDER_T = 640;           // sky is above SKY_B; underground below UNDER_T
+  const FLY_S = 1.4, BODY = { x: 1150, y: 150, r: 34 };
+  const OFFER = '#f2cf5b', PART = '#c79a3a', TASSEL = '#b35a4a', JUNK = '#a7b0a8', TAIL = '#6a5341';
+  const DREAM_GOLD = '#f6dc8a', DREAM_MUCK = '#7b6a48';
+  const GIFTS = ['一块金子', '一锭银子', '一颗宝石'];
+  const LITTER = ['马铃薯皮', '破伞', '旧袜子', '玻璃碎渣', '衣扣', '糖果纸', '废车票', '指甲和老茧皮', '鸡蛋壳'];
+  const FOLK = [260, 520, 800, 1080, 1340];
+  const C = SC.palette();
+
+  // Where the n-th part of the machine sits, below ground. Fixed once chosen.
+  function partAt(j){
+    const COLS = [5, 6, 4, 7, 3, 8, 2, 9, 1, 10, 0, 11];          // from the middle outward
+    const r = SC.rng(3900 + j), col = COLS[j % 12], row = Math.floor(j / 12) % 3, layer = Math.floor(j / 36);
+    return { x: 130 + col * 122 + (r() - .5) * 30 + layer * 9, y: 720 + row * 90 + (r() - .5) * 20 + layer * 7,
+             kind: Math.floor(r() * 3), s: .8 + .4 * r(), spin: r() < .5 ? 1 : -1 };
+  }
+  // Where the n-th piece of litter ends up: circling the star.
+  function litterAt(j){
+    const a = j * 2.39996 + .4, rr = BODY.r + 22 + (j % 6) * 14;
+    return { x: BODY.x + rr * Math.cos(a), y: BODY.y + rr * Math.sin(a) * .8, rot: a };
+  }
+  // The comet tail grows toward the west and never runs out of sky.
+  function tailAt(i){
+    const x = BODY.x - BODY.r - 18 - 980 * (1 - Math.pow(.965, i + 1));
+    return { x, y: BODY.y + 26 * Math.sin(i * .55) * (i / (i + 6)), r: Math.max(3, 9 - i * .08) };
+  }
+
+  const clock = () => performance.now() / 1000;
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const offers = [], tosses = [];
+  let eased = 0, truth = false, asked = '', said = '';
+  let st = null;
+
+  const prog = (o, now) => still ? 1 : Math.max(0, Math.min(1, (now - o.t0) / FLY_S));
+  // An offering is lifted a little toward the sky, then sinks through the ground to its place below.
+  function offerPos(o, p){
+    const sx = o.from, sy = SURFACE - 52, top = sy - 70, t = partAt(o.j);
+    if (p < .25){ const e = p / .25; return { x: sx, y: sy - (sy - top) * (1 - (1 - e) * (1 - e)) }; }
+    const e = (p - .25) / .75, k = e * e;
+    return { x: sx + (t.x - sx) * e, y: top + (t.y - top) * k };
+  }
+  // Litter just floats up to the star.
+  function tossPos(o, p){
+    const sx = o.from, sy = SURFACE - 52, t = litterAt(o.j), e = 1 - (1 - p) * (1 - p);
+    return { x: sx + (t.x - sx) * e + Math.sin(p * 9) * 18 * (1 - p), y: sy + (t.y - sy) * e };
+  }
+
+  function part(ctx, j, now){
+    const q = partAt(j);
+    ctx.save(); ctx.translate(q.x, q.y); ctx.scale(q.s, q.s);
+    ctx.fillStyle = PART; ctx.strokeStyle = PART; ctx.lineWidth = 3;
+    if (q.kind === 0){                                             // a gear, turning
+      ctx.rotate(still ? 0 : now * .6 * q.spin);
+      ctx.beginPath();
+      for (let i = 0; i < 20; i++){ const a = i / 20 * 6.2832, r = i % 2 ? 22 : 28; ctx.lineTo(r * Math.cos(a), r * Math.sin(a)); }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#5a4520'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, 6.29); ctx.fill();
+      ctx.rotate(still ? 0 : -now * .6 * q.spin);
+    } else if (q.kind === 1){                                      // a clock that keeps good time
+      ctx.beginPath(); ctx.arc(0, 0, 24, 0, 6.29); ctx.fill();
+      ctx.fillStyle = '#f4ecd6'; ctx.beginPath(); ctx.arc(0, 0, 18, 0, 6.29); ctx.fill();
+      const m = still ? 1 : now / 8, h = m / 12;
+      ctx.strokeStyle = '#3a2c14'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(14 * Math.sin(m * 6.2832), -14 * Math.cos(m * 6.2832));
+      ctx.moveTo(0, 0); ctx.lineTo(9 * Math.sin(h * 6.2832), -9 * Math.cos(h * 6.2832)); ctx.stroke();
+    } else {                                                       // a pipe with a connecting rod
+      ctx.fillRect(-34, -7, 68, 14);
+      ctx.beginPath(); ctx.arc(-34, 0, 9, 0, 6.29); ctx.arc(34, 0, 9, 0, 6.29); ctx.fill();
+    }
+    // Every pipe and rod is trimmed with tassels, fringe and lace.
+    ctx.strokeStyle = TASSEL; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = -2; i <= 2; i++){ ctx.moveTo(i * 9, 26); ctx.lineTo(i * 9 + 2, 40); }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function litter(ctx, j, x, y, rot){
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0);
+    ctx.fillStyle = JUNK; ctx.strokeStyle = JUNK; ctx.lineWidth = 2.5;
+    const k = j % LITTER.length;
+    ctx.beginPath();
+    if (k === 0){ ctx.fillStyle = '#b8955c'; ctx.ellipse(0, 0, 12, 4, 0, 0, 6.29); ctx.fill(); }               // potato peel
+    else if (k === 1){ ctx.moveTo(-14, 0); ctx.quadraticCurveTo(0, -16, 14, 0); ctx.moveTo(0, -8); ctx.lineTo(3, 12); ctx.stroke(); } // broken umbrella
+    else if (k === 2){ ctx.fillStyle = '#8f8aa8'; ctx.fillRect(-4, -12, 8, 16); ctx.fillRect(-4, 2, 12, 6); }    // old sock
+    else if (k === 3){ ctx.fillStyle = '#d9f0f4'; ctx.moveTo(-7, 5); ctx.lineTo(0, -9); ctx.lineTo(6, 6); ctx.closePath(); ctx.fill(); } // glass, glinting
+    else if (k === 4){ ctx.fillStyle = '#c9b48a'; ctx.arc(0, 0, 6, 0, 6.29); ctx.fill(); }                      // button
+    else if (k === 5){ ctx.fillStyle = '#d47a9a'; ctx.fillRect(-9, -5, 18, 10); }                              // sweet wrapper
+    else if (k === 6){ ctx.fillStyle = '#d8cfb4'; ctx.fillRect(-11, -6, 22, 12); }                              // used ticket
+    else if (k === 7){ ctx.moveTo(-8, 0); ctx.quadraticCurveTo(0, -6, 8, 0); ctx.stroke(); }                     // nail paring
+    else { ctx.fillStyle = '#efe6d2'; ctx.moveTo(-9, 2); ctx.lineTo(-4, -6); ctx.lineTo(0, 1); ctx.lineTo(5, -7); ctx.lineTo(9, 2); ctx.closePath(); ctx.fill(); } // eggshell
+    ctx.restore();
+  }
+
+  function coin(ctx, x, y){
+    ctx.save(); ctx.translate(x, y);
+    ctx.fillStyle = OFFER; ctx.beginPath(); ctx.arc(0, 0, 11, 0, 6.29); ctx.fill();
+    ctx.strokeStyle = '#fff3c4'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 7, 0, 6.29); ctx.stroke();
+    ctx.restore();
+  }
+
+  // What the people imagine: drawn dashed, over the real thing.
+  function dreams(ctx){
+    ctx.save(); ctx.setLineDash([10, 8]); ctx.lineWidth = 3;
+    ctx.strokeStyle = DREAM_GOLD; ctx.globalAlpha = .9;
+    ctx.beginPath();                                               // a golden city with a diamond gate
+    const base = 250;
+    [[560, 120], [640, 70], [720, 110], [800, 40], [880, 110], [960, 70], [1040, 120]].forEach(([x, top], i, a) => {
+      ctx.moveTo(x - 34, base); ctx.lineTo(x - 34, top); ctx.lineTo(x, top - 30); ctx.lineTo(x + 34, top); ctx.lineTo(x + 34, base);
+    });
+    ctx.moveTo(800, base); ctx.lineTo(778, 205); ctx.lineTo(800, 180); ctx.lineTo(822, 205); ctx.closePath();
+    ctx.stroke();
+    ctx.strokeStyle = DREAM_MUCK;
+    ctx.beginPath();                                               // roofs like bins upside down, and the heap
+    for (let i = 0; i < 6; i++){ const x = 250 + i * 220; ctx.moveTo(x - 50, 680); ctx.lineTo(x - 36, 730); ctx.lineTo(x + 36, 730); ctx.lineTo(x + 50, 680); }
+    ctx.moveTo(420, 980); ctx.quadraticCurveTo(620, 820, 800, 790); ctx.quadraticCurveTo(840, 760, 790, 740);
+    ctx.moveTo(800, 790); ctx.quadraticCurveTo(980, 820, 1180, 980);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function town(ctx){
+    ctx.fillStyle = '#2a2a3c';
+    for (let i = 0; i < 9; i++){ const x = 120 + i * 165, h = 70 + (i * 37) % 60; ctx.fillRect(x, SURFACE - h, 110, h); }
+    FOLK.forEach(x => SC.figure(ctx, C.ink, x, SURFACE, 1.15, 0));
+  }
+
+  function draw(ctx){
+    const now = clock();
+    // sky, city, ground, underground
+    ctx.fillStyle = C.sky; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#1b2440'; ctx.fillRect(0, SKY_B, W, SURFACE - SKY_B);
+    ctx.fillStyle = '#3b2f24'; ctx.fillRect(0, SURFACE, W, UNDER_T - SURFACE);
+    ctx.fillStyle = '#1e1813'; ctx.fillRect(0, UNDER_T, W, H - UNDER_T);
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, SKY_B); ctx.lineTo(W, SKY_B); ctx.stroke();
+
+    // The real contents. Faint while you look at it the way they believe.
+    ctx.globalAlpha = truth ? 1 : .32;
+    for (let i = 0; i < eased; i++){ const t = tailAt(i); ctx.save(); ctx.translate(t.x, t.y); ctx.fillStyle = TAIL; ctx.beginPath(); ctx.arc(0, 0, t.r, 0, 6.29); ctx.fill(); ctx.restore(); }
+    ctx.fillStyle = '#4b4f5a'; ctx.beginPath(); ctx.arc(BODY.x, BODY.y, BODY.r, 0, 6.29); ctx.fill();
+    tosses.forEach(o => { if (prog(o, now) >= 1){ const q = litterAt(o.j); litter(ctx, o.j, q.x, q.y, q.rot); } });
+    offers.forEach(o => { if (prog(o, now) >= 1) part(ctx, o.j, now); });
+    ctx.globalAlpha = 1;
+    if (!truth) dreams(ctx);
+
+    town(ctx);
+    // Things on their way, always drawn as they really move.
+    offers.forEach(o => { const p = prog(o, now); if (p < 1){ const q = offerPos(o, p); coin(ctx, q.x, q.y); } });
+    tosses.forEach(o => { const p = prog(o, now); if (p < 1){ const q = tossPos(o, p); litter(ctx, o.j, q.x, q.y, p * 4); } });
+
+    ui();
+  }
+
+  const ANSWER = {
+    where: '一样也没到天上。他们越攒越端着，攒下的都往下沉，成了地下那座城：最有权威的建筑师设计的，用的是市面上最贵的料，齿轮和钟都走得好好的，管子和连杆上挂着皮穗、流苏、花边。',
+    star: '全城扔掉的东西：马铃薯皮、破伞、旧袜子、晃眼的玻璃碴、掉了的扣子、糖纸、用过的车票、剪下来的指甲和老茧、鸡蛋壳。天上那座贝尔萨贝阿就是这个样子。',
+    tail: '书里说，它拖着的那条长长的彗星尾巴，是这城吝啬的人们在唯一不小气、自在快活的时刻排出来的。'
+  };
+  const set = (id, v) => { const e = document.getElementById(id); if (e.textContent !== v) e.textContent = v; };
+
+  function ui(){
+    set('meter', '供了 ' + offers.length + ' 样 · 扔了 ' + tosses.length + ' 样 · 尾巴 ' + eased + ' 截');
+    set('look', truth ? '照他们信的看' : '掀开看实情');
+    set('caption', (truth ? '实情：地下是最好的建筑师用最贵的料造的；天上那颗是全城扔掉的东西' : '他们信的：天上一座黄金城，地下一座粪便城（虚线）')
+      + (said ? ' · 刚才' + said : ''));
+    let m = truth ? '他们信对了一半：城上城下确实各有一座。' : '先按「攒一样贵重的」，看它往哪儿去。';
+    if (asked) m = ANSWER[asked];
+    set('moral', m);
+  }
+
+  st = SC.stage(document.getElementById('c'), W, H, draw);
+  const redraw = () => { if (st) st.redraw(); };
+  redraw();
+
+  document.getElementById('offer').addEventListener('click', () => {
+    const j = offers.length;
+    offers.push({ j, from: FOLK[j % FOLK.length], t0: clock() });
+    said = '攒了' + GIFTS[j % GIFTS.length]; asked = ''; redraw();
+  });
+  document.getElementById('toss').addEventListener('click', () => {
+    const j = tosses.length;
+    tosses.push({ j, from: FOLK[(j + 2) % FOLK.length], t0: clock() });
+    said = '扔了' + LITTER[j % LITTER.length]; asked = ''; redraw();
+  });
+  document.getElementById('ease').addEventListener('click', () => { eased += 1; said = '松快了一回'; asked = ''; redraw(); });
+  document.getElementById('look').addEventListener('click', () => { truth = !truth; redraw(); });
+  ['where', 'star', 'tail'].forEach(id => document.getElementById(id).addEventListener('click', () => { asked = id; redraw(); }));
+})();
+</script>
+</body>
+</html>
