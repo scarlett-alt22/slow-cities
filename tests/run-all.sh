@@ -1,6 +1,6 @@
 #!/bin/sh
 # 跑全部城市测试：node tests/<城>_test.js cities/<城>.html shared.js
-# ⚠️ zobeide_test.js 只打印、断言失败不改退出码——这里的 ✓ 只说明它没崩。
+# 有些测试不读后面两个参数（用 canvas-spy 的那几个自己找页面），传了也无妨。
 cd "$(dirname "$0")/.." || exit 1
 fail=0; n=0
 for t in tests/*_test.js; do

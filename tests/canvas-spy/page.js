@@ -74,6 +74,8 @@ function createStorage() {
  * @param {Array<[string,string]>} [o.mutations]  [find, replace] pairs; one is applied when o.mutant is set
  * @param {number|string} [o.mutant]  defaults to process.env.CANVAS_SPY_MUTANT
  * @param {object} [o.scripts]  { 'src as written in the page': 'code' } for scripts not on disk
+ * @param {object} [o.styles]  { 'href as written in the page': 'css' } for stylesheets not on disk
+ * @param {boolean} [o.warnCss=true]  warn when the page reads a CSS variable nobody defines
  * @param {boolean} [o.strictFinite=true]  throw when the page passes NaN/Infinity to the canvas
  * @param {object} [o.clock]  options for the fake clock ({ start })
  * @param {object} [o.globals]  extra globals for the page
@@ -87,7 +89,18 @@ function loadPage(source, o = {}) {
   const { doc, scripts } = parseDocument(html, { viewport, rects: o.rects, strictFinite: o.strictFinite });
   const clock = createClock(o.clock);
   const scheme = o.colorScheme || 'light';
-  const css = doc.querySelectorAll('style').map(s => s.textContent).join('\n');
+  // CSS for custom properties: inline <style> plus local <link rel=stylesheet>, in document order.
+  // Remote stylesheets (fonts and the like) are skipped.
+  const css = doc.querySelectorAll('style, link').map(n => {
+    if (n.localName === 'style') return n.textContent;
+    if (!/\bstylesheet\b/i.test(n.getAttribute('rel') || '')) return '';
+    const href = n.getAttribute('href') || '';
+    if (o.styles && href in o.styles) return o.styles[href];
+    if (!href || /^[a-z]+:|^\/\//i.test(href)) return '';
+    const file = path.resolve(base, href.split(/[?#]/)[0]);
+    if (!fs.existsSync(file)) throw new Error(`canvas-spy: page links stylesheet ${href}, not found at ${file}`);
+    return fs.readFileSync(file, 'utf8');
+  }).join('\n');
   const vars = rootVars(css, scheme);
 
   // --- script sources, in document order ---
@@ -129,6 +142,7 @@ function loadPage(source, o = {}) {
 
   // --- the window ---
   const listeners = {};
+  const cssMisses = new Set();
   const media = q => {
     if (o.media) { const r = o.media(q); if (r !== undefined) return !!r; }
     if (/prefers-reduced-motion\s*:\s*reduce/.test(q)) return !!o.reducedMotion;
@@ -146,7 +160,17 @@ function loadPage(source, o = {}) {
     getComputedStyle: el => {
       const own = {};
       for (const [k, v] of Object.entries((el && el.style) || {})) if (typeof v !== 'function') own[k] = v;
-      return { ...own, getPropertyValue: n => (own[n] ?? vars[n] ?? '') };
+      return { ...own, getPropertyValue: n => {
+        if (own[n] !== undefined) return own[n];
+        if (vars[n] !== undefined) return vars[n];
+        // An unknown custom property is '' in a browser too, but in a test it usually means the
+        // stylesheet wasn't found, and every colour silently becomes the same empty string.
+        if (String(n).startsWith('--') && !cssMisses.has(n)) {
+          cssMisses.add(n);
+          if (o.warnCss !== false) console.warn(`canvas-spy: page read CSS variable ${n}, which no stylesheet defines (it gets '')`);
+        }
+        return '';
+      } };
     },
     devicePixelRatio: o.devicePixelRatio ?? 1,
     innerWidth: viewport.width, innerHeight: viewport.height,
@@ -185,10 +209,10 @@ function loadPage(source, o = {}) {
   dispatch(doc, makeEvent('DOMContentLoaded', { bubbles: false }));
   dispatch(win, makeEvent('load', { bubbles: false }));
 
-  return makePage({ win, doc, clock, exposed, vars });
+  return makePage({ win, doc, clock, exposed, vars, cssMisses });
 }
 
-function makePage({ win, doc, clock, exposed, vars }) {
+function makePage({ win, doc, clock, exposed, vars, cssMisses }) {
   const resolve = t => {
     if (typeof t !== 'string') return t;
     const el = t.startsWith('#') || /[.\s[>]/.test(t) ? doc.querySelector(t) : doc.getElementById(t);
@@ -212,7 +236,7 @@ function makePage({ win, doc, clock, exposed, vars }) {
   };
 
   const page = {
-    window: win, document: doc, clock, exposed, cssVars: vars,
+    window: win, document: doc, clock, exposed, cssVars: vars, cssMisses,
 
     el: resolve,
     text: t => resolve(t).textContent,
