@@ -9,6 +9,10 @@
 // Each --env adds one more environment to run every mutant in (e.g. REDUCE=1 for a
 // reduced-motion pass); a mutant counts as caught if any environment fails on it.
 //
+// For each caught mutant it also prints the first failing check it finds in the test's
+// output (a line starting with ✗, ✖, "not ok" or FAIL) and how many more failed, so you can see *which* check
+// caught it: a check that never shows up there may not be doing anything.
+//
 // Exit 0 only if the test passes unmutated in every environment, every mutant is
 // caught, and no mutation's anchor went missing.
 
@@ -29,6 +33,15 @@ function parseArgs(argv) {
   }
   const cmd = argv.slice(i);
   return cmd.length ? { envs, timeout, max, cmd } : null;
+}
+
+const FAILED_LINE = /^\s*(✗|✖|not ok\b|FAIL\b)/;
+/** The first line of a test's output that looks like a failed check, trimmed. */
+function firstFailure(out) {
+  const lines = out.split('\n').filter(l => FAILED_LINE.test(l));
+  if (!lines.length) return null;
+  const t = lines[0].trim();
+  return (t.length > 110 ? t.slice(0, 107) + '...' : t) + (lines.length > 1 ? `  (+${lines.length - 1} more)` : '');
 }
 
 const label = e => Object.keys(e).length ? Object.entries(e).map(([k, v]) => `${k}=${v}`).join(',') : 'default';
@@ -68,7 +81,12 @@ function main() {
     const bad = results.find(x => x.r.code === EXIT_BAD_ANCHOR);
     if (bad) { broken++; console.log(`! mutant ${k}: anchor missing or ambiguous — this mutation never ran\n    ${bad.r.out.trim().split('\n').pop()}`); continue; }
     const by = results.filter(x => x.r.code !== 0).map(x => label(x.e) + (x.r.code === 'timeout' ? ' (timeout)' : ''));
-    if (by.length) { caught++; console.log(`✓ mutant ${k}: caught by ${by.join(', ')}`); }
+    if (by.length) {
+      caught++; console.log(`✓ mutant ${k}: caught by ${by.join(', ')}`);
+      const first = results.find(x => x.r.code !== 0 && x.r.code !== 'timeout');
+      const why = first && firstFailure(first.r.out);
+      console.log(why ? `    ↳ ${why}` : `    ↳ (no failed-check line in the output; it failed some other way, exit ${first ? first.r.code : 'timeout'})`);
+    }
     else { survived++; console.log(`✗ mutant ${k}: SURVIVED — the test passes with this bug in the page`); }
   }
   if (n === 0) { console.log('no mutations defined (loadPage({ mutations: [...] }))'); process.exit(1); }
