@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>莱奥尼亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">连绵的城市 · 之一 · 读到的第 40 座</p>
+    <h1>莱奥尼亚</h1>
+    <p class="lede">莱奥尼亚每天都是新的：新床单、新香皂、新浴衣，没开过的罐头，最新式的收音机。昨天的莱奥尼亚装在塑料袋里，摆在人行道上等垃圾车。清洁工把它们运到城外，没人问运到了哪里。她扔得越多，攒得越多。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="莱奥尼亚的剖面：城在中间，两边是一层层堆起来的垃圾山，最外面是邻城的垃圾"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="day" type="button">又过了一天</button>
+    <button id="roll" type="button">一个罐头盒滚下来</button>
+    <button id="reset" type="button">回到第一天早上</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-11（心跳夜读），2026-11-22 做的，动手前回原章核过。画的是剖面：城在中间，两边是城外的垃圾山。每按一次「又过了一天」，城里换上全新的东西，昨天扔掉的照书里列的次序（牙膏皮、灯泡、报纸……热水器、百科全书、钢琴、瓷器餐具）装袋，清洁工搬出城，在山上铺一层。新的一层永远压在旧的上面，旧的一层不挪、不少，山越来越高，铺得越来越远，清洁工每天要走的路也越来越长。山的最外面，邻城的垃圾也在往这边堆，过了一阵两边就混在一起。按「一个罐头盒滚下来」：山不够高，它滚到山脚就停了；够高了，就是一场雪崩，城被埋进她扔掉的过去里，跟邻城的混成一片平地，然后邻城的压路机开过来。测试查的是：城里从来没有一点旧东西；每天恰好多一层，旧的层一个点都不动；新的一层压在旧的上面；清洁工的路只会变长；山矮的时候罐头盒什么也改变不了，山高了它就让一切变平。层的颜色、坡的形状、雪崩的门槛（十二层）是我定的。文字是我的转述。系统设了减少动效时，清洁工不走路、罐头不滚、山不塌，直接到结果。</p>
+
+  <nav class="cities"><a href="./beersheba.html">← 贝尔萨贝阿</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: the more Leonia throws away, the more it keeps. The city is new every
+  // morning; around it yesterday is laid on top of the day before, and never moves.
+  const W = 1600, H = 1000, CX = 800, GROUND = 760;
+  const FOOT = 260, T = 24, DANGER = 12, WALK = 1.4, FALL = 1.6, ROLL = 1.2;
+  const STRATA = ['#7a705c', '#5f6a66', '#866b60', '#6b6350', '#5d6274', '#7d7a62'];
+  const NEIGHBOR = '#3f4a5a', ROLLER = '#c9b27a';
+  const ITEMS = ['挤过的牙膏皮', '烧坏的灯泡', '报纸', '容器', '包装纸', '热水器', '百科全书', '钢琴', '瓷器餐具'];
+  const ROLLING = ['罐头盒', '废轮胎', '大肚酒瓶'];
+  const C = SC.palette();
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => performance.now() / 1000;
+
+  let day = 0, walkT0 = -1, fallen = false, fallT0 = -1, roll = null, rolls = 0, rollers = 0, lastRoll = '';
+  let st = null;
+
+  const reach = k => 380 + 14 * k;                       // how far from the centre layer k is laid
+  const cityHalf = d => Math.min(230, 110 + 4 * d);       // the city grows a little every year
+  // Height of layer k at distance r from the centre: rises from the foot, flat on top, falls at its far edge.
+  function bump(k, r){
+    const b = reach(k);
+    if (r < FOOT || r > b) return 0;
+    return T * Math.min(1, (r - FOOT) / 70, (b - r) / 90);
+  }
+  const pile = (k, r) => { let h = 0; for (let j = 1; j <= k; j++) h += bump(j, r); return h; };
+  const walkP = now => walkT0 < 0 ? 1 : still ? 1 : Math.min(1, (now - walkT0) / WALK);
+  const fallP = now => !fallen ? 0 : still ? 1 : Math.min(1, (now - fallT0) / FALL);
+  const laid = now => walkP(now) >= 1 ? day : day - 1;    // today's layer is down once the cleaners arrive
+  const neighborReach = d => 120 + 8 * d;                  // the neighbours pile toward Leonia as well
+  const neighborTop = d => 70 + 5 * d;
+  const walkSteps = d => d === 0 ? 0 : Math.round((reach(d) - 40 - cityHalf(d)) / 10);
+
+  function layer(ctx, k, side, squash){
+    const xs = []; for (let r = FOOT; r <= reach(k); r += 10) xs.push(r); if (xs[xs.length - 1] !== reach(k)) xs.push(reach(k));
+    ctx.fillStyle = STRATA[(k - 1) % STRATA.length];
+    ctx.beginPath();
+    xs.forEach((r, i) => { const x = CX + side * r, y = GROUND - pile(k, r) * squash; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    for (let i = xs.length - 1; i >= 0; i--) ctx.lineTo(CX + side * xs[i], GROUND - pile(k - 1, xs[i]) * squash);
+    ctx.closePath(); ctx.fill();
+  }
+
+  function neighbors(ctx, d, squash){
+    const R = neighborReach(d), top = neighborTop(d) * squash;
+    ctx.fillStyle = NEIGHBOR;
+    for (const side of [-1, 1]){
+      const edge = side < 0 ? 0 : W;
+      ctx.beginPath(); ctx.moveTo(edge, GROUND); ctx.lineTo(edge, GROUND - top); ctx.lineTo(edge - side * R, GROUND); ctx.closePath(); ctx.fill();
+    }
+  }
+
+  function city(ctx, d, alpha){
+    const half = cityHalf(d), n = Math.max(3, Math.floor(half * 2 / 64));
+    ctx.globalAlpha = alpha;
+    for (let i = 0; i < n; i++){
+      const x0 = CX - half + i * (half * 2 / n) + 6, w = half * 2 / n - 12, h = 70 + ((i * 37 + 11) % 5) * 18;
+      ctx.fillStyle = C.chalk; ctx.fillRect(x0, GROUND - h, w, h);
+      ctx.fillStyle = C.lamp;
+      for (let y = GROUND - h + 14; y < GROUND - 18; y += 22) for (let x = x0 + 8; x < x0 + w - 10; x += 18) ctx.fillRect(x, y, 7, 9);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function flat(ctx, d, p){
+    // after the avalanche: Leonia's past and the neighbours' outskirts in one flat, mixed band
+    const thick = 40 + d * 3, seg = 40;
+    ctx.globalAlpha = p;
+    const inL = 40 + rollers * 70, inR = W - 40 - rollers * 70;     // behind the rollers it is the neighbours' land now
+    for (let x = 0, i = 0; x < W; x += seg, i++){
+      const mine = x + seg <= inL || x >= inR ? false : (i * 7 + d) % 3 !== 0;
+      ctx.fillStyle = mine ? STRATA[(i + d) % STRATA.length] : NEIGHBOR;
+      ctx.fillRect(x, GROUND - thick, seg, thick);
+    }
+    // the neighbours' steamrollers, coming in from both sides
+    for (const side of [-1, 1]){
+      const x = side < 0 ? inL : inR;
+      ctx.fillStyle = ROLLER;
+      ctx.beginPath(); ctx.arc(x, GROUND - thick - 26, 26, 0, 6.29); ctx.fill();
+      ctx.fillRect(x - side * 60 - 22, GROUND - thick - 60, 44, 34);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function draw(ctx){
+    const now = clock();
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = C.rule; ctx.fillRect(0, GROUND, W, H - GROUND);
+
+    const fp = fallP(now), squash = 1 - fp, k = laid(now);
+    if (fp < 1){
+      neighbors(ctx, day, squash);
+      for (let j = 1; j <= k; j++){ layer(ctx, j, -1, squash); layer(ctx, j, 1, squash); }
+      city(ctx, day, 1 - fp);
+      if (k > 0 && !fallen){
+        ctx.font = '400 24px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillStyle = C.ink;
+        const r = (FOOT + reach(k)) / 2;
+        ctx.fillText(ITEMS[(k - 1) % ITEMS.length], CX - r, GROUND - pile(k, r) - 10);
+      }
+    }
+    if (fallen) flat(ctx, day, fp);
+
+    // cleaners carrying yesterday out of town
+    const wp = walkP(now);
+    if (wp < 1 && !fallen){
+      for (const side of [-1, 1]){
+        const from = CX + side * (cityHalf(day) + 10), to = CX + side * (reach(day) - 40);
+        const x = from + (to - from) * wp, r = Math.abs(x - CX);
+        const y = GROUND - pile(day - 1, r);
+        SC.figure(ctx, C.ink, x, y, 1, Math.sin(wp * 30) * .1);
+        ctx.fillStyle = C.dim; ctx.beginPath(); ctx.arc(x + side * 14, y - 30, 9, 0, 6.29); ctx.fill();
+      }
+    }
+
+    // something rolling down the slope toward the city
+    if (roll){
+      const p = still ? 1 : Math.min(1, (now - roll.t0) / ROLL);
+      const top = (FOOT + reach(roll.k)) / 2, end = roll.stop;
+      const r = top + (end - top) * p;
+      const y = GROUND - pile(roll.k, r) * (fallen ? 1 - fp : 1) - 12;
+      ctx.fillStyle = C.lamp; ctx.beginPath(); ctx.arc(CX - r, y, 12, 0, 6.29); ctx.fill();
+      if (p >= 1) roll = null;
+    }
+
+  }
+
+  function ui(){
+    const steps = walkSteps(day);
+    document.getElementById('meter').textContent = fallen
+      ? '莱奥尼亚：没了 · 邻城的压路机开进来 ' + rollers + ' 次'
+      : '过了 ' + day + ' 天 · 城外 ' + day + ' 层 · 清洁工单程 ' + steps + ' 步';
+    document.getElementById('day').textContent = fallen ? '邻城的压路机往前开' : '又过了一天';
+    document.getElementById('roll').disabled = fallen;
+    document.getElementById('roll').textContent = '一个' + ROLLING[rolls % ROLLING.length] + '滚下来';
+    let m = '莱奥尼亚每天都是新的。她的富足不看每天造出多少新东西，看每天为了给新东西让位扔掉多少。';
+    if (day > 0) m = '她扔得越多，攒得越多。城一面每天更新，一面把一切保存在唯一一种形态里：昨天的压在前天的上面。';
+    if (day > 0 && reach(day) >= CX - neighborReach(day)) m = '最外面那道坡的另一边，别的城也在往这边堆。两边的垃圾互相撑着、叠着、混在一起。';
+    if (lastRoll === 'stop') m = '它滚到山脚就停了。山还不够高。';
+    if (fallen) m = rollers ? '隔壁早就备好压路机的城开始平整这块地，扩出自己的地盘，让自己的清洁工走到更远的地方去。'
+                            : '一个' + lastRoll + '滚下来，引起破鞋、陈年日历、枯花的大雪崩。她被埋进一直想摆脱的过去里，跟邻城的边缘混成一片，终于彻底干净了。';
+    document.getElementById('moral').textContent = m;
+  }
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  document.getElementById('day').addEventListener('click', () => {
+    if (fallen){ rollers += 1; caption('压路机开进来 ' + rollers + ' 次'); ui(); st.redraw(); return; }
+    day += 1; walkT0 = clock(); lastRoll = '';
+    caption('第 ' + day + ' 天清晨，一切都是新的。昨天的' + ITEMS[(day - 1) % ITEMS.length] + '装进塑料袋，清洁工搬到城外。');
+    ui(); st.redraw();
+  });
+  document.getElementById('roll').addEventListener('click', () => {
+    if (fallen) return;
+    const item = ROLLING[rolls % ROLLING.length], k = laid(clock());
+    rolls += 1;
+    if (k < 1){ lastRoll = 'stop'; caption('城外还没有山，' + item + '就躺在地上。'); ui(); st.redraw(); return; }
+    if (k < DANGER){
+      roll = { t0: clock(), k, stop: FOOT + 6, fall: false }; lastRoll = 'stop';
+      caption(item + '滚到山脚，停了。');
+    } else {
+      roll = { t0: clock(), k, stop: cityHalf(day) - 20, fall: true }; lastRoll = item;
+      fallen = true; fallT0 = clock(); rollers = 0;
+      caption(item + '滚下来，整座山跟着塌了。');
+    }
+    ui(); st.redraw();
+  });
+  document.getElementById('reset').addEventListener('click', () => {
+    day = 0; walkT0 = -1; fallen = false; fallT0 = -1; roll = null; rolls = 0; rollers = 0; lastRoll = '';
+    caption('第一天早上'); ui(); st.redraw();
+  });
+
+  st = SC.stage(document.getElementById('c'), W, H, draw);
+  caption('第一天早上'); ui();
+})();
+</script>
+</body>
+</html>
