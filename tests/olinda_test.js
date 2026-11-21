@@ -1,4 +1,4 @@
-// 无头跑 olinda.html：桩掉 DOM/canvas，时间用假时钟往前走。画面从记录下来的绘图调用里读，不读页面的计数。
+// 欧林达。2026-11-21 改用 canvas-spy（tests/canvas-spy/），检查条目跟原来手搭的版本（7d456b5 之前）一一对应。画面从画出来的东西里读，不读页面的计数。
 // 检查：
 // ① 新的只从正中心出现：每过一年，最里面那道城墙是针头大（半径 3）；旧城墙按从外往里的次序一道不少，
 //    而且只往外走，不往里缩（年与年之间，和长的过程中间都查）
@@ -8,72 +8,65 @@
 // ⑤ 放大镜：拿起来以后有一块裁剪区，里面放大 ≥ 8 倍，针头那道城墙在里面画到了；放下就没有；点画面，镜子挪到点的地方
 // ⑥ caption 从里往外报大小（针头、半个柠檬、牛肝菌、汤盘），三个问题的回答对得上
 // ⑦ 连按三下过一年＝过三年；REDUCE=1：按一下，不等就到下一年
-// 变异：MUT=1..8 各弄坏一处，这个文件必须以非 0 退出。跑法见末尾。
-const fs = require('fs');
-const html = fs.readFileSync(process.argv[2], 'utf8');
-const shared = fs.readFileSync(process.argv[3], 'utf8');
-let inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
-
-const MUT = process.env.MUT || '';
-function swap(a, b){ if (!inline.includes(a)) throw new Error('mutation anchor missing: ' + a); inline = inline.replace(a, b); }
-if (MUT === '1') swap('for (let k = n - 1; k >= 0; k--){', 'for (let k = 0; k < n; k++){');
-if (MUT === '2') swap('if (age >= 4) return STAGE[4];', 'if (age >= 4) return STAGE[4] * (1 + .02 * (age - 4));');
-if (MUT === '3') swap('const n = Math.floor(Y + 1e-9) + 2', 'const n = Math.min(14, Math.floor(Y + 1e-9) + 2)');
-if (MUT === '4') swap('for (let kind = 0; kind < KIND.length; kind++)', 'for (let kind = 0; kind < (k < 3 ? 6 : KIND.length); kind++)');
-if (MUT === '5') swap('p: .2 + .6 * r()', 'p: .2 + 1.2 * r()');
-if (MUT === '6') swap('ctx.scale(ZOOM, ZOOM)', 'ctx.scale(1, 1)');
-if (MUT === '7') swap('target += 1;', 'target = Math.floor(Y) + 1;');
-if (MUT === '8') swap('Y = still ? target :', 'Y = false ? target :');
-
-const hook = 'const redraw = () => { if (st) st.redraw(); };';
-if (!inline.includes(hook)) throw new Error('hook point missing');
-inline = inline.replace(hook, hook + '\n  global.__T = { redraw };');
+// 变异：node tests/canvas-spy-mutate.js --env REDUCE=1 -- node tests/olinda_test.js
+const path = require('path');
+const { loadPage, objects, sameColor } = require('./canvas-spy');
 
 const REDUCE = process.env.REDUCE === '1';
 const W = 1600, H = 1000, CX = 800, CY = 500, WALL = '#8c7f6a';
 const KIND = ['#c8765a', '#a9b4c2', '#e8d9a0', '#5f8a5a', '#c94c4c', '#d9b36a', '#b9a38a'];
-const els = {}, handlers = {};
-function el(id){ return els[id] || (els[id] = { id, textContent: '', disabled: false, classList: { add(){}, remove(){} },
-  addEventListener(ev, f){ handlers[id + ':' + ev] = f; },
-  getBoundingClientRect(){ return { left: 0, top: 0, width: 1600, height: 1000 }; }, getContext(){ return ctx; } }); }
-let calls = [];
-const ctx = new Proxy({}, { get(t, k){ if (k in t) return t[k]; if (k === 'createLinearGradient' || k === 'createRadialGradient') return (...a) => ({ addColorStop(){} });
-  return (...a) => { for (const v of a) if (typeof v === 'number' && !isFinite(v)) throw new Error('non-finite arg to ' + String(k)); calls.push([String(k), a]); }; },
-  set(t, k, v){ calls.push(['=' + String(k), v]); t[k] = v; return true; } });
-let NOW = 5000;
-global.window = { matchMedia: () => ({ matches: REDUCE }), addEventListener(){}, devicePixelRatio: 1 };
-global.document = { getElementById: el, documentElement: {}, fonts: null };
-global.getComputedStyle = () => ({ getPropertyValue: n => n });
-global.performance = { now: () => NOW * 1000 };
-global.requestAnimationFrame = () => {};
-eval(shared); global.SC = window.SC;
-eval(inline);
+const page = loadPage(path.join(__dirname, '..', 'cities', 'olinda.html'), {
+  reducedMotion: REDUCE,
+  viewport: { width: W, height: H },
+  expose: { 'const redraw = () => { if (st) st.redraw(); };': '{ redraw }' },
+  mutations: [
+    ['for (let k = n - 1; k >= 0; k--){', 'for (let k = 0; k < n; k++){'],
+    ['if (age >= 4) return STAGE[4];', 'if (age >= 4) return STAGE[4] * (1 + .02 * (age - 4));'],
+    ['const n = Math.floor(Y + 1e-9) + 2', 'const n = Math.min(14, Math.floor(Y + 1e-9) + 2)'],
+    ['for (let kind = 0; kind < KIND.length; kind++)', 'for (let kind = 0; kind < (k < 3 ? 6 : KIND.length); kind++)'],
+    ['p: .2 + .6 * r()', 'p: .2 + 1.2 * r()'],
+    ['ctx.scale(ZOOM, ZOOM)', 'ctx.scale(1, 1)'],
+    ['target += 1;', 'target = Math.floor(Y) + 1;'],
+    ['Y = still ? target :', 'Y = false ? target :'],
+  ],
+});
 
 let fail = 0; const check = (ok, msg) => { console.log((ok ? '✓ ' : '✗ ') + msg); if (!ok) fail++; };
-const T = global.__T;
-const press = id => handlers[id + ':click']({ clientX: 0, clientY: 0, currentTarget: el(id) });
+const el = id => page.el(id);
+const press = id => page.click(id);
 const near = (a, b, e) => Math.abs(a - b) <= e;
 
-function frame(){
-  calls = []; T.redraw();
-  let stroke = null, fill = null, path = [], inLens = false, pending = null;
+// 城墙是以 (CX, CY) 为圆心的描边圆。圆被记成采样点，半径＝点到圆心（经过同一个变换）的距离除以缩放。
+function radii(op){
+  const [a, b, c, d, e, f] = op.transform;
+  const cx = a * CX + c * CY + e, cy = b * CX + d * CY + f, s = Math.hypot(a, b);
+  const out = new Set();
+  for (const p of op.points) out.add(Math.round(Math.hypot(p.x - cx, p.y - cy) / s * 1e6) / 1e6);
+  return [...out];
+}
+// 一帧：往前走 ms 毫秒画一帧（减少动效没有循环，直接重画）。clip 之后画的是放大镜里的东西。
+function frame(ms = 0){
+  const rec = page.canvas(); rec.clear();
+  const ops = REDUCE ? page.capture(() => page.exposed.redraw()) : page.frame(ms);
+  const clipAt = rec.calls.findIndex(c => c.name === 'clip');
+  const outside = clipAt < 0 ? ops : ops.filter(op => op.index < clipAt);
+  const inside = clipAt < 0 ? [] : ops.filter(op => op.index > clipAt);
   const f = { walls: [], glyphs: [], lens: null };
-  for (const [k, a] of calls){
-    if (k === 'clip'){ inLens = true; f.lens = { at: path.find(p => p.k === 'arc'), scale: 0, walls: [], moves: [] }; continue; }
-    if (k === '=strokeStyle' || k === '=fillStyle'){
-      if (k === '=strokeStyle') stroke = a; else fill = a;
-      if (!inLens && pending && KIND.includes(a)){ f.glyphs.push({ x: pending.x, y: pending.y, kind: KIND.indexOf(a) }); pending = null; }
-      continue;
-    }
-    if (k === 'translate'){ if (!inLens) pending = { x: a[0], y: a[1] }; else if (f.lens.moves.length < 2) f.lens.moves.push(a); continue; }
-    if (k === 'scale'){ if (inLens && f.lens && !f.lens.scale) f.lens.scale = a[0]; continue; }
-    if (k === 'beginPath'){ path = []; continue; }
-    if (k === 'arc'){ path.push({ k: 'arc', x: a[0], y: a[1], r: a[2] }); continue; }
-    if (k === 'stroke' && stroke === WALL){
-      path.filter(p => p.k === 'arc' && p.x === CX && p.y === CY).forEach(p => (inLens ? f.lens.walls : f.walls).push(p.r));
-    }
+  for (const op of outside) if (op.op === 'stroke' && sameColor(op.style, WALL)) f.walls.push(...radii(op));
+  f.walls.sort((x, y) => y - x);                     // outermost (oldest) first
+  const kindOf = op => KIND.findIndex(k => sameColor(k, op.style));
+  for (const obj of objects(outside)){
+    const first = obj.ops.find(op => kindOf(op) >= 0);
+    if (first) f.glyphs.push({ x: obj.origin.x, y: obj.origin.y, kind: kindOf(first) });
   }
-  f.walls.sort((a, b) => b - a);                     // outermost (oldest) first
+  if (clipAt >= 0){
+    const arc = rec.calls.slice(0, clipAt).reverse().find(c => c.name === 'arc');
+    const wallsIn = inside.filter(op => op.op === 'stroke' && sameColor(op.style, WALL));
+    const t = wallsIn.length ? wallsIn[0].transform : [0, 0, 0, 0, NaN, NaN];
+    const at = arc ? { x: arc.args[0], y: arc.args[1], r: arc.args[2] } : null;
+    f.lens = { at, scale: t[0], walls: wallsIn.flatMap(radii),
+      focus: at ? { x: (at.x - t[4]) / t[0], y: (at.y - t[5]) / t[0] } : { x: NaN, y: NaN } };
+  }
   return f;
 }
 const year = () => +(/第 (\d+) 年/.exec(el('meter').textContent) || [0, -1])[1];
@@ -85,11 +78,11 @@ check(f.walls.length === 2 && near(f.walls[1], 3, .01), '① 开头：一座城�
 check(el('caption').textContent === '从里往外：针头，再往外 1 圈是自然大小的城', '⑥ 开头 caption: ' + el('caption').textContent);
 check(!f.lens, '⑤ 没拿放大镜时没有裁剪区');
 press('lens'); f = frame();
-const focus = f => f.lens && f.lens.moves[1] ? { x: -f.lens.moves[1][0], y: -f.lens.moves[1][1] } : { x: NaN, y: NaN };
+const focus = f => f.lens ? f.lens.focus : { x: NaN, y: NaN };
 check(f.lens && focus(f).x === CX && focus(f).y === CY && f.lens.scale >= 8 && f.lens.walls.some(r => near(r, 3, .01)),
   '⑤ 拿起放大镜：对着正中心、放大 ' + (f.lens ? f.lens.scale : 0) + ' 倍、针头那道墙在镜子里画到了');
 check(f.lens && f.lens.at && Math.hypot(f.lens.at.x - CX, f.lens.at.y - CY) > f.lens.at.r + 120, '⑤ 放大的那块在旁边，不盖住城（镜子中心 ' + (f.lens && f.lens.at ? f.lens.at.x + ',' + f.lens.at.y : '无') + '）');
-handlers['c:click']({ clientX: 100, clientY: 120, currentTarget: el('c') }); f = frame();
+page.click('c', 100, 120); f = frame();
 check(focus(f).x === 100 && focus(f).y === 120 && f.lens.at.x > W / 2, '⑤ 点画面，镜子对准点的地方（' + focus(f).x + ',' + focus(f).y + '），放大的那块挪到另一边');
 press('lens'); f = frame();
 check(!f.lens, '⑤ 放下放大镜，裁剪区没了');
@@ -105,8 +98,7 @@ for (let d = 1; d <= D; d++){
   press('year');
   const steps = REDUCE ? 1 : 10;
   for (let s = 0; s < steps; s++){
-    if (!REDUCE) NOW += .2;
-    const g = frame();
+    const g = frame(200);
     // ① old walls only move outward (match from the outside in: the oldest is always outermost)
     for (let j = 0; j < prev.length; j++) if (!(g.walls[j] >= prev[j] - 1e-9)) outwardOk = false;
     if (g.walls.length < prev.length) countOk = false;
@@ -153,7 +145,7 @@ check(/^从里往外：针头 · 半个柠檬 · 一朵牛肝菌 · 一只汤盘
 const y0 = year();
 if (!REDUCE){
   press('year'); press('year'); press('year'); frame();
-  NOW += 10; frame();
+  frame(10000);
   check(year() === y0 + 3, '⑦ 连按三下：' + y0 + ' → ' + year());
 } else {
   press('year'); f = frame();
@@ -162,4 +154,3 @@ if (!REDUCE){
 
 console.log(fail ? fail + ' 条没过' : '全过');
 process.exit(fail ? 1 : 0);
-// 变异自检：for m in 1 2 3 4 5 6 7 8; do MUT=$m node tests/olinda_test.js cities/olinda.html shared.js >/dev/null; a=$?; MUT=$m REDUCE=1 node tests/olinda_test.js cities/olinda.html shared.js >/dev/null; echo "MUT=$m exit=$a reduce=$?"; done
