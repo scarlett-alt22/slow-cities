@@ -3,4 +3,4 @@
 Copied from https://github.com/xuxingtu02-cyber/canvas-spy at commit 6bedefd (`src/`, 0.1.2), and `../canvas-spy-mutate.js` from its `bin/` with the require path changed.
 Update by copying again; don't edit here.
 
-Tests that use it: `beersheba_test.js`, `olinda_test.js`, `zobeide_test.js`, `zoe_test.js`, `zora_test.js`, `leonia_test.js`. The others still carry their own hand-made copy of the fake canvas and clock.
+Tests that use it: `beersheba_test.js`, `olinda_test.js`, `zobeide_test.js`, `zoe_test.js`, `zora_test.js`, `leonia_test.js`, `zirma_test.js`. The others still carry their own hand-made copy of the fake canvas and clock.
