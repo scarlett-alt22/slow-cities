@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>奥塔维亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">轻盈的城市 · 之五 · 读到的第 26 座</p>
+    <h1>奥塔维亚</h1>
+    <p class="lede">奥塔维亚是一座蛛网之城。两座陡峭的高山之间是悬崖，城就悬在半空，用绳索、铁链和吊桥跟两边的山连着。城基是一张网，既当路，又当支撑；别的一切都不在网上，而是吊在网下面。脚下是万丈深渊，只有几片白云飘过。住在这里并不比住在别的城更叫人不安：他们知道，这张网只能撑这么多。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="两座山之间张着一张网，网下吊着绳梯、吊床、房子等等，下面是云和很深的谷底"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="hang" type="button">往网下吊一样</button>
+    <button id="walk" type="button">从网上走过去</button>
+    <button id="reset" type="button">回到只有一张网</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-07 21:50（心跳夜读），2026-11-23 做的，动手前回原章核过。按「往网下吊一样」，照书里的次序吊上去：绳梯、吊床、麻袋似的房子、晾衣架、小艇似的凉台、皮水袋、煤气嘴子、淋浴喷头、高架秋千、游戏套圈、高架索道、吊灯、盆栽的下垂植物。每吊一样，网往下坠一点。十三样吊完，按钮就按不动了：书里没说这张网到底能撑多少，只说他们知道它只能撑这么多，所以我让它停在书里列完的地方，不让它断。按「从网上走过去」，有个人沿着网上的木板从这边山走到那边山。测试查的是：除了在网上走路的人，没有一样东西在网的上面，每样都吊在网下、挂绳的上端正好落在网上；网的两头一直钉在山上，中间只往下坠、不往上弹；吊的东西没有一样碰到云下面的谷底；走路的人每一步都踩在网上；次序跟书里一样。网的样子、每样东西吊在哪、坠多少是我定的。文字是我的转述。系统设了减少动效时，人不走路，直接到对面。</p>
+
+  <nav class="cities"><a href="./leonia.html">← 莱奥尼亚</a><a href="../index.html">全部城市</a><span></span></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: everything in Octavia hangs below the net, nothing stands on it but the people
+  // crossing; the net only takes so much, and its people know it.
+  const W = 1600, H = 1000, AX = 170, BX = 1430, AY = 300, MID = (AX + BX) / 2, HALF = (BX - AX) / 2;
+  const VALLEY = 975, CLOUD_Y = 760, WALK_S = 6;
+  const THINGS = ['绳梯', '吊床', '麻袋似的房子', '晾衣架', '小艇似的凉台', '皮水袋', '煤气嘴子', '淋浴喷头', '高架秋千', '游戏套圈', '高架索道', '吊灯', '盆栽的下垂植物'];
+  const ROPE = '#b9a98a', PLANK = '#8a6f4e', ROCK = '#3b3a52', THING = '#e1c28a';
+  const C = SC.palette();
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => performance.now() / 1000;
+
+  let hung = 0, walkT0 = -1, crossings = 0;
+  let st = null;
+
+  const sag = n => 40 + 9 * n;                                          // the more it carries, the lower it hangs
+  const netY = (x, n) => AY + sag(n) * (1 - ((x - MID) / HALF) ** 2);
+  // Where the i-th thing hangs: spread over the span, never at the two ends; next-door neighbours hang at
+  // different depths so their names don't run into each other.
+  const slot = i => (i * 5) % 13;
+  const slotX = i => AX + 80 + slot(i) * ((BX - AX - 160) / 12);
+  const drop = i => 60 + (slot(i) % 2) * 100 + (slot(i) % 3) * 10;     // length of its hanging line
+  // A rough shape for each, in the book's order, and how tall it is.
+  const SHAPE = ['ladder', 'hammock', 'sack', 'rack', 'boat', 'skin', 'nozzle', 'shower', 'trapeze', 'ring', 'car', 'chandelier', 'plant'];
+  const TALL = { ladder: 64, hammock: 20, sack: 56, rack: 8, boat: 18, skin: 32, nozzle: 24, shower: 30, trapeze: 8, ring: 32, car: 34, chandelier: 36, plant: 50 };
+
+  function cliffs(ctx){
+    ctx.fillStyle = ROCK;
+    ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(0, 200); ctx.lineTo(90, 230); ctx.lineTo(AX, AY - 20); ctx.lineTo(AX + 30, H); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(W, H); ctx.lineTo(W, 190); ctx.lineTo(W - 80, 225); ctx.lineTo(BX, AY - 20); ctx.lineTo(BX - 30, H); ctx.closePath(); ctx.fill();
+  }
+
+  function net(ctx, n){
+    // three long ropes, the top one carrying the planks, plus cross threads
+    ctx.strokeStyle = ROPE; ctx.lineWidth = 3;
+    for (let k = 0; k < 3; k++){
+      ctx.beginPath();
+      for (let x = AX; x <= BX; x += 10){ const y = netY(x, n) + k * 16; x === AX ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+    ctx.lineWidth = 1.5;
+    for (let x = AX + 30; x < BX; x += 30){ ctx.beginPath(); ctx.moveTo(x, netY(x, n)); ctx.lineTo(x, netY(x, n) + 32); ctx.stroke(); }
+    ctx.fillStyle = PLANK;
+    for (let x = AX + 6; x < BX - 20; x += 22) ctx.fillRect(x, netY(x + 8, n) - 5, 16, 5);
+  }
+
+  function thing(ctx, i, n){
+    const x = slotX(i), top = netY(x, n), y = top + drop(i);
+    ctx.strokeStyle = ROPE; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, y); ctx.stroke();
+    ctx.fillStyle = THING;
+    const k = SHAPE[i];
+    ctx.beginPath();
+    if (k === 'ladder') ctx.rect(x - 8, y, 16, 64);
+    else if (k === 'hammock') ctx.ellipse(x, y + 10, 42, 10, 0, 0, 6.29);
+    else if (k === 'sack') ctx.ellipse(x, y + 28, 24, 28, 0, 0, 6.29);
+    else if (k === 'rack' || k === 'trapeze') ctx.rect(x - 32, y, 64, 8);
+    else if (k === 'boat') ctx.ellipse(x, y, 36, 18, 0, 0, 3.1416);
+    else if (k === 'skin' || k === 'ring') ctx.arc(x, y + 16, 16, 0, 6.29);
+    else if (k === 'car') ctx.rect(x - 22, y, 44, 34);
+    else { const t = TALL[k]; ctx.moveTo(x - 20, y); ctx.lineTo(x + 20, y); ctx.lineTo(x, y + t); ctx.closePath(); }   // nozzle, shower, chandelier, trailing plant
+    ctx.fill();
+    ctx.font = '400 22px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = C.ink;
+    ctx.fillText(THINGS[i], x, y + TALL[k] + 8);
+  }
+
+  function draw(ctx){
+    const now = clock();
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // the valley floor, far below, and a few clouds over it
+    ctx.fillStyle = C.rule; ctx.fillRect(0, VALLEY, W, H - VALLEY);
+    ctx.fillStyle = C.chalk; ctx.globalAlpha = .22;
+    for (const [cx, w] of [[420, 170], [860, 230], [1220, 150]]){ ctx.beginPath(); ctx.ellipse(cx, CLOUD_Y, w, 26, 0, 0, 6.29); ctx.fill(); }
+    ctx.globalAlpha = 1;
+    cliffs(ctx);
+    net(ctx, hung);
+    for (let i = 0; i < hung; i++) thing(ctx, i, hung);
+    // someone crossing on the planks
+    if (walkT0 >= 0){
+      const p = still ? 1 : Math.min(1, (now - walkT0) / WALK_S);
+      const x = AX + 20 + (BX - AX - 40) * p;
+      SC.figure(ctx, C.ink, x, netY(x, hung) - 5, 1, still ? 0 : Math.sin(now * 9) * .08);
+      if (p >= 1){ walkT0 = -1; crossings += 1; ui(); }
+    }
+  }
+
+  function ui(){
+    const full = hung >= THINGS.length;
+    document.getElementById('meter').textContent = '网下吊了 ' + hung + ' 样 · 从网上走过 ' + crossings + ' 回';
+    const btn = document.getElementById('hang');
+    btn.disabled = full;
+    btn.textContent = full ? '不再吊了' : '往网下吊一样';
+    let m = '城基是一张网，既当路，又当支撑。';
+    if (hung > 0) m = '别的一切都不在网上，而是吊在网下面。';
+    if (crossings > 0 && hung === 0) m = '走在窄木板上，脚下是万丈深渊，只有几片白云飘过。';
+    if (full) m = '他们知道，这张网只能撑这么多。所以住在这里，并不比住在别的城更叫人不安。';
+    document.getElementById('moral').textContent = m;
+  }
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  document.getElementById('hang').addEventListener('click', () => {
+    if (hung >= THINGS.length) return;
+    hung += 1;
+    caption('吊上了' + THINGS[hung - 1] + '。');
+    ui(); st.redraw();
+  });
+  document.getElementById('walk').addEventListener('click', () => {
+    walkT0 = clock(); caption('有人从这边的山走到那边的山。'); st.redraw();
+  });
+  document.getElementById('reset').addEventListener('click', () => {
+    hung = 0; walkT0 = -1; crossings = 0; caption('只有一张网'); ui(); st.redraw();
+  });
+
+  st = SC.stage(document.getElementById('c'), W, H, draw);
+  caption('只有一张网'); ui();
+})();
+</script>
+</body>
+</html>
