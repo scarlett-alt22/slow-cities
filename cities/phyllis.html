@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>菲利德 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+<style>
+.stage canvas{touch-action:none;cursor:crosshair}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与眼睛 · 之四 · 读到的第 32 座</p>
+    <h1>菲利德</h1>
+    <p class="lede">头一回到菲利德，运河上的桥一座一个样，临街的窗一扇一个样，路面有鹅卵石、青石板、碎石子、蓝白瓷砖；城墙头上冒出一丛刺山柑，梁柱上端站着三个女王，洋葱圆顶上串着三个小洋葱加一个尖顶。你会说，天天看得到这些的人真有福气。可要是你得在这里住下去，眼前的城很快就褪色了。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="一座城：上面是房子、城墙、雕像柱和洋葱圆顶，中间一条运河架着六座桥，下面是四种铺法的街。住得越久，花样越少，只剩一条从家门到商贩帐篷的路。"></canvas>
+    <div class="caption" id="caption"></div>
+  </div>
+
+  <div class="controls">
+    <button id="stay" type="button">再住一天</button>
+    <button id="leave" type="button">只看一眼就走</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>头一回看见的</th><th>住到第几天就看不见了</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <p class="read-on">读于 2026-11-09 16:52（心跳），做于 2026-11-24 凌晨，动手前回原章核过。住下以后，花样一天天褪掉，留下的只有你用得着的：一扇门、一段台阶、能放篮子的板凳、会绊你一跤的坑，还有绕开债主家门的那条近路。盯着一处看，什么也回不来；鼠标或手指飞快地扫过去，被扫到的花样会闪回来一下。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./octavia.html">← 奥塔维亚</a><a href="../index.html">全部城市</a></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000;
+  const C = SC.palette();
+  const ORN = '#d8c39a';            // only the wonders are drawn in this colour
+  const PAPER = '#ece6d6';
+  const CANAL_Y = 600, CANAL_H = 80, STREET_Y = 760;
+  const LAST_DAY = 7, FAST = 2400, FLASH_MS = 700, REACH = 70;
+
+  // What a newcomer sees, and the day it stops being seen. The book names the stained glass,
+  // the three queens and the onion dome as the ones that go, so they go last.
+  const WONDERS = [
+    { name: '驴背式罗锅桥',     kind: 'bridge', x: 150,  gone: 1 },
+    { name: '有顶篷的桥',       kind: 'bridge', x: 410,  gone: 2 },
+    { name: '有柱脚的桥',       kind: 'bridge', x: 670,  gone: 1 },
+    { name: '驳船托着的桥',     kind: 'bridge', x: 930,  gone: 3 },
+    { name: '悬空桥',           kind: 'bridge', x: 1190, gone: 2 },
+    { name: '带雕花栏杆的桥',   kind: 'bridge', x: 1450, gone: 4 },
+    { name: '双扇窗',           kind: 'window', x: 300,  gone: 2 },
+    { name: '摩尔式窗',         kind: 'window', x: 560,  gone: 3 },
+    { name: '哥特式窗',         kind: 'window', x: 1000, gone: 4 },
+    { name: '彩色玻璃圆花窗',   kind: 'window', x: 1260, gone: 6 },
+    { name: '鹅卵石路',         kind: 'paving', x: 200,  gone: 1 },
+    { name: '青石板路',         kind: 'paving', x: 600,  gone: 2 },
+    { name: '碎石子路',         kind: 'paving', x: 1000, gone: 3 },
+    { name: '蓝白瓷砖路',       kind: 'paving', x: 1400, gone: 5 },
+    { name: '城墙头上的刺山柑', kind: 'caper',  x: 90,   gone: 4 },
+    { name: '梁柱上的三个女王', kind: 'queens', x: 780,  gone: 6 },
+    { name: '洋葱圆顶',         kind: 'onion',  x: 1490, gone: 7 }
+  ];
+  // where each wonder sits, for the glance to find it
+  function centre(w){
+    if (w.kind === 'bridge') return [w.x, CANAL_Y + 10];
+    if (w.kind === 'window') return [w.x, 410];
+    if (w.kind === 'paving') return [w.x, STREET_Y + 110];
+    if (w.kind === 'caper')  return [w.x, 250];
+    if (w.kind === 'queens') return [w.x, 200];
+    return [w.x, 170];
+  }
+
+  // What stays: the things you use, and the short cut between them.
+  const HOME = [260, 560], CREDITOR = [820, 560], TENT = [1360, 900];
+  const STEPS = [560, 780], BENCH = [1080, 820], HOLE = [930, 905];
+  const ROUTE = [HOME, [410, 590], [410, 690], STEPS, [760, 830], [880, 860], [1000, 860], BENCH, [1220, 860], TENT];
+  const ARCADES = [{ x: 1150, warm: false }, { x: 1300, warm: true }];
+
+  let day = 0;
+  const flashes = new Map();     // wonder index -> page time (ms) the flash ends
+  let lastGlance = null;         // { x, y, t }
+  let lastSeen = '';
+
+  function now(){ return performance.now(); }
+  function seenToday(i){ return day < WONDERS[i].gone; }
+  function flashing(i){ return (flashes.get(i) || 0) > now(); }
+  function alphaOf(i){ return seenToday(i) || flashing(i) ? 1 : 0; }
+  function seenCount(){ return WONDERS.filter((_, i) => seenToday(i)).length; }
+
+  // ---- the wonders ----
+  function bridge(ctx, w){
+    const x = w.x, y = CANAL_Y;
+    ctx.beginPath();
+    if (w.name === '驴背式罗锅桥'){ ctx.moveTo(x - 95, y + 30); ctx.quadraticCurveTo(x, y - 90, x + 95, y + 30); }
+    else if (w.name === '有顶篷的桥'){ ctx.moveTo(x - 90, y + 10); ctx.lineTo(x + 90, y + 10); ctx.moveTo(x - 90, y - 50); ctx.lineTo(x, y - 90); ctx.lineTo(x + 90, y - 50); ctx.moveTo(x - 80, y + 10); ctx.lineTo(x - 80, y - 54); ctx.moveTo(x + 80, y + 10); ctx.lineTo(x + 80, y - 54); }
+    else if (w.name === '有柱脚的桥'){ ctx.moveTo(x - 95, y + 4); ctx.lineTo(x + 95, y + 4); for (let k = -2; k <= 2; k++){ ctx.moveTo(x + k * 40, y + 4); ctx.lineTo(x + k * 40, y + CANAL_H); } }
+    else if (w.name === '驳船托着的桥'){ ctx.moveTo(x - 95, y + 14); ctx.lineTo(x + 95, y + 14); [-55, 0, 55].forEach(d => { ctx.moveTo(x + d - 24, y + 34); ctx.quadraticCurveTo(x + d, y + 56, x + d + 24, y + 34); ctx.lineTo(x + d - 24, y + 34); }); }
+    else if (w.name === '悬空桥'){ ctx.moveTo(x - 95, y - 60); ctx.lineTo(x - 95, y + 10); ctx.moveTo(x + 95, y - 60); ctx.lineTo(x + 95, y + 10); ctx.moveTo(x - 95, y - 60); ctx.quadraticCurveTo(x, y + 30, x + 95, y - 60); ctx.moveTo(x - 95, y + 10); ctx.lineTo(x + 95, y + 10); for (let k = -3; k <= 3; k++){ const sx = x + k * 24; ctx.moveTo(sx, y + 10); ctx.lineTo(sx, y - 60 + 90 * (1 - (k / 4) * (k / 4)) * .9); } }
+    else { ctx.moveTo(x - 95, y + 10); ctx.quadraticCurveTo(x, y - 30, x + 95, y + 10); ctx.moveTo(x - 95, y - 20); ctx.quadraticCurveTo(x, y - 60, x + 95, y - 20); for (let k = -4; k <= 4; k++){ const sx = x + k * 20; ctx.moveTo(sx, y - 6 - 30 * (1 - (k / 5) * (k / 5))); ctx.arc(sx, y - 14 - 30 * (1 - (k / 5) * (k / 5)), 5, Math.PI / 2, Math.PI * 2.5); } }
+    ctx.stroke();
+  }
+  function windowShape(ctx, w){
+    const x = w.x, y = 410;
+    ctx.beginPath();
+    if (w.name === '双扇窗'){ ctx.rect(x - 36, y - 50, 72, 100); ctx.moveTo(x, y - 50); ctx.lineTo(x, y + 50); }
+    else if (w.name === '摩尔式窗'){ ctx.moveTo(x - 34, y + 50); ctx.lineTo(x - 34, y - 10); ctx.bezierCurveTo(x - 34, y - 60, x, y - 50, x, y - 76); ctx.bezierCurveTo(x, y - 50, x + 34, y - 60, x + 34, y - 10); ctx.lineTo(x + 34, y + 50); ctx.closePath(); }
+    else if (w.name === '哥特式窗'){ ctx.moveTo(x - 30, y + 50); ctx.lineTo(x - 30, y - 10); ctx.quadraticCurveTo(x - 30, y - 60, x, y - 80); ctx.quadraticCurveTo(x + 30, y - 60, x + 30, y - 10); ctx.lineTo(x + 30, y + 50); ctx.closePath(); ctx.moveTo(x, y - 80); ctx.lineTo(x, y + 50); }
+    else { ctx.arc(x, y - 10, 46, 0, Math.PI * 2); for (let k = 0; k < 8; k++){ const a = k * Math.PI / 4; ctx.moveTo(x, y - 10); ctx.lineTo(x + Math.cos(a) * 46, y - 10 + Math.sin(a) * 46); } ctx.moveTo(x + 18, y - 10); ctx.arc(x, y - 10, 18, 0, Math.PI * 2); }
+    ctx.stroke();
+  }
+  function paving(ctx, w){
+    const x0 = w.x - 190, x1 = w.x + 190, y0 = STREET_Y + 60, y1 = STREET_Y + 160;
+    ctx.beginPath();
+    if (w.name === '鹅卵石路'){ for (let r = 0; r < 4; r++) for (let k = 0; k < 9; k++){ const cx = x0 + 22 + k * 42 + (r % 2) * 20, cy = y0 + 14 + r * 24; ctx.moveTo(cx + 15, cy); ctx.ellipse(cx, cy, 15, 9, 0, 0, Math.PI * 2); } }
+    else if (w.name === '青石板路'){ for (let r = 0; r < 3; r++){ ctx.moveTo(x0, y0 + r * 33); ctx.lineTo(x1, y0 + r * 33); for (let k = 0; k < 5; k++){ const sx = x0 + 40 + k * 76 + (r % 2) * 38; ctx.moveTo(sx, y0 + r * 33); ctx.lineTo(sx, y0 + (r + 1) * 33); } } }
+    else if (w.name === '碎石子路'){ const R = SC.rng(7); for (let k = 0; k < 60; k++){ const cx = x0 + 10 + R() * 360, cy = y0 + 8 + R() * 84; ctx.moveTo(cx + 3, cy); ctx.arc(cx, cy, 3, 0, Math.PI * 2); } }
+    else { for (let r = 0; r < 3; r++) for (let k = 0; k < 10; k++){ if ((r + k) % 2) continue; ctx.rect(x0 + k * 38, y0 + r * 33, 38, 33); } }
+    ctx.stroke();
+  }
+  function caper(ctx, w){
+    const x = w.x, y = 300;
+    ctx.beginPath();
+    for (let k = -3; k <= 3; k++){ ctx.moveTo(x, y); ctx.quadraticCurveTo(x + k * 18, y - 40, x + k * 26, y - 70 + Math.abs(k) * 8); }
+    for (let k = -3; k <= 3; k++){ const lx = x + k * 26, ly = y - 70 + Math.abs(k) * 8; ctx.moveTo(lx + 7, ly); ctx.arc(lx, ly, 7, 0, Math.PI * 2); }
+    ctx.stroke();
+  }
+  function queens(ctx, w){
+    const x = w.x, y = 250;
+    ctx.beginPath(); ctx.moveTo(x - 80, y); ctx.lineTo(x + 80, y); ctx.moveTo(x - 80, y + 14); ctx.lineTo(x + 80, y + 14); ctx.stroke();
+    [-50, 0, 50].forEach(d => {
+      const q = x + d;
+      ctx.beginPath(); ctx.moveTo(q - 18, y); ctx.lineTo(q - 8, y - 70); ctx.lineTo(q + 8, y - 70); ctx.lineTo(q + 18, y); ctx.stroke();
+      ctx.beginPath(); ctx.arc(q, y - 82, 11, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(q - 11, y - 94); ctx.lineTo(q - 7, y - 106); ctx.lineTo(q - 2, y - 96); ctx.lineTo(q + 2, y - 108); ctx.lineTo(q + 6, y - 96); ctx.lineTo(q + 11, y - 106); ctx.lineTo(q + 11, y - 94); ctx.stroke();
+    });
+  }
+  function onion(ctx, w){
+    const x = w.x, y = 260;
+    ctx.beginPath();
+    ctx.moveTo(x - 60, y); ctx.bezierCurveTo(x - 80, y - 60, x - 10, y - 80, x, y - 120); ctx.bezierCurveTo(x + 10, y - 80, x + 80, y - 60, x + 60, y);
+    [0, 1, 2].forEach(k => { const cy = y - 136 - k * 22; ctx.moveTo(x + 9, cy); ctx.bezierCurveTo(x + 12, cy - 6, x + 3, cy - 10, x, cy - 16); ctx.bezierCurveTo(x - 3, cy - 10, x - 12, cy - 6, x - 9, cy); ctx.closePath(); });
+    ctx.moveTo(x, y - 200); ctx.lineTo(x, y - 236);
+    ctx.stroke();
+  }
+  const DRAW = { bridge, window: windowShape, paving, caper, queens, onion };
+
+  // ---- the plain city: always there, and nobody looks at it ----
+  function plain(ctx){
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 2; ctx.globalAlpha = .7;
+    ctx.strokeRect(40, 300, 1520, CANAL_Y - 300 - 20);              // the house fronts, one long row
+    [180, 440, 700, 880, 1120, 1380].forEach(x => { ctx.beginPath(); ctx.moveTo(x, 300); ctx.lineTo(x, CANAL_Y - 20); ctx.stroke(); });
+    ctx.beginPath(); ctx.moveTo(40, 300); for (let k = 0; k < 6; k++){ ctx.lineTo(40 + k * 20, 280); ctx.lineTo(50 + k * 20, 280); ctx.lineTo(50 + k * 20, 300); ctx.lineTo(60 + k * 20, 300); } ctx.stroke(); // the castle wall
+    ctx.strokeRect(1430, 260, 120, 40);                              // the drum under the dome
+    ctx.strokeRect(700, 264, 160, 36);                               // the beam the queens stand on
+    ctx.fillStyle = C.rule; ctx.globalAlpha = .35; ctx.fillRect(40, CANAL_Y, 1520, CANAL_H);   // the canal
+    ctx.globalAlpha = .7; ctx.beginPath(); ctx.moveTo(40, STREET_Y); ctx.lineTo(1560, STREET_Y); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // ---- what stays ----
+  function used(ctx){
+    const k = Math.min(1, day / 2);                                  // comes up over the first two days
+    if (k <= 0) return;
+    ctx.save();
+    // sun and shade, which you learn to tell apart
+    ctx.globalAlpha = .12 * k; ctx.fillStyle = C.lamp;
+    [[40, 260], [520, 300], [1000, 220], [1340, 220]].forEach(([x, w]) => ctx.fillRect(x, STREET_Y, w, 200));
+    ctx.globalAlpha = k; ctx.strokeStyle = C.lamp; ctx.fillStyle = C.lamp; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // the short cut
+    ctx.setLineDash([2, 14]);
+    ctx.beginPath(); ROUTE.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke();
+    ctx.setLineDash([]);
+    // a door, a flight of steps, a bench for the basket, a hole that trips you, the tent
+    ctx.strokeRect(HOME[0] - 22, HOME[1] - 64, 44, 64);
+    ctx.beginPath(); for (let s = 0; s < 4; s++){ ctx.moveTo(STEPS[0] - 50 + s * 12, STEPS[1] + s * 14); ctx.lineTo(STEPS[0] + 50 - s * 12, STEPS[1] + s * 14); } ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(BENCH[0] - 50, BENCH[1]); ctx.lineTo(BENCH[0] + 50, BENCH[1]); ctx.moveTo(BENCH[0] - 40, BENCH[1]); ctx.lineTo(BENCH[0] - 40, BENCH[1] + 30); ctx.moveTo(BENCH[0] + 40, BENCH[1]); ctx.lineTo(BENCH[0] + 40, BENCH[1] + 30); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(HOLE[0], HOLE[1], 30, 10, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(TENT[0] - 60, TENT[1]); ctx.lineTo(TENT[0], TENT[1] - 80); ctx.lineTo(TENT[0] + 60, TENT[1]); ctx.closePath(); ctx.stroke();
+    // the creditor's door: known, and walked around, never through
+    ctx.globalAlpha = .5 * k; ctx.strokeStyle = C.dim; ctx.strokeRect(CREDITOR[0] - 22, CREDITOR[1] - 64, 44, 64);
+    // two arcades; one is pleasanter, for a reason that is not in the stones
+    ARCADES.forEach(a => {
+      ctx.globalAlpha = k * (a.warm && day >= 3 ? 1 : .45); ctx.strokeStyle = a.warm && day >= 3 ? C.lamp : C.dim;
+      ctx.beginPath(); for (let j = 0; j < 3; j++){ const ax = a.x - 45 + j * 30; ctx.moveTo(ax - 12, 740); ctx.lineTo(ax - 12, 712); ctx.arc(ax, 712, 12, Math.PI, 0); ctx.lineTo(ax + 12, 740); } ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  function draw(ctx){
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (day >= LAST_DAY){ ctx.globalAlpha = .08; ctx.fillStyle = PAPER; ctx.fillRect(40, 60, 1520, 900); ctx.globalAlpha = 1; }
+    plain(ctx);
+    ctx.save(); ctx.strokeStyle = ORN; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    WONDERS.forEach((w, i) => { const a = alphaOf(i); if (!a) return; ctx.globalAlpha = a; DRAW[w.kind](ctx, w); });
+    ctx.restore();
+    used(ctx);
+  }
+
+  const MORALS = [
+    '能天天看到这些的人多有福气啊。只看一眼就得走的话，你会舍不得。',
+    '住下来了。你开始认得哪边晒太阳、哪边背阴。',
+    '你认得了一扇门、一段台阶、一张能放篮子的板凳、一个不留神就绊你一跤的坑。',
+    '你挑了一条近路，不用经过债主家门口就到得了商贩的帐篷。两条拱廊里你更喜欢一条：三十年前有个穿绣花宽袖衣服的姑娘从那里走过，或者某个时辰那里的光让你想起别处的一条拱廊。',
+    '桥你还天天走，可已经想不起它是什么样的桥。',
+    '你的脚跟着的不是眼睛看见的东西，是心里那些埋掉了、抹掉了的东西。',
+    '彩色玻璃窗、梁柱上的女王，也不见了。',
+    '上百万只眼睛抬头看着窗户、桥梁和刺山柑，看见的也许只是一张白纸。可这样的城躲得过凝视，躲不过出其不意投过去的一眼：飞快地扫过去试试。'
+  ];
+
+  function ui(){
+    document.getElementById('meter').textContent = '住了 ' + day + ' 天 · 还看得见 ' + seenCount() + ' / ' + WONDERS.length;
+    document.getElementById('moral').textContent = MORALS[Math.min(day, LAST_DAY)];
+    document.getElementById('caption').textContent = lastSeen ? '刚才那一眼，你看见了：' + lastSeen
+      : day === 0 ? '按「再住一天」住下来' : day >= LAST_DAY ? '盯着看，什么也回不来' : '';
+    document.getElementById('stay').disabled = day >= LAST_DAY;
+  }
+
+  const rows = document.getElementById('rows');
+  WONDERS.forEach(w => {
+    const tr = document.createElement('tr');
+    [w.name, '第 ' + w.gone + ' 天'].forEach(txt => { const td = document.createElement('td'); td.textContent = txt; tr.appendChild(td); });
+    rows.appendChild(tr);
+  });
+
+  const canvas = document.getElementById('c');
+  var st = null;
+  st = SC.stage(canvas, W, H, draw);
+  ui();
+
+  // ---- the glance ----
+  function segDist(p, a, b){
+    const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy;
+    const t = L ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L)) : 0;
+    return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+  }
+  function glance(x, y){
+    const t = now();
+    if (lastGlance){
+      const dt = (t - lastGlance.t) / 1000;
+      const speed = dt > 0 ? Math.hypot(x - lastGlance.x, y - lastGlance.y) / dt : 0;
+      if (speed >= FAST){
+        const hit = [];
+        WONDERS.forEach((w, i) => {
+          if (seenToday(i)) return;
+          if (segDist(centre(w), [lastGlance.x, lastGlance.y], [x, y]) <= REACH){ flashes.set(i, t + FLASH_MS); hit.push(w.name); }
+        });
+        if (hit.length){
+          lastSeen = WONDERS.filter((_, i) => flashing(i)).map(w => w.name).join('、'); ui(); st.redraw();
+          setTimeout(() => { if (![...flashes.values()].some(e => e > now())){ lastSeen = ''; ui(); } st.redraw(); }, FLASH_MS + 10);
+        }
+      }
+    }
+    lastGlance = { x, y, t };
+  }
+  function world(e){ const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height]; }
+  canvas.addEventListener('pointermove', e => { const [x, y] = world(e); glance(x, y); });
+  canvas.addEventListener('pointerleave', () => { lastGlance = null; });
+  canvas.addEventListener('pointerdown', e => { const [x, y] = world(e); lastGlance = { x, y, t: now() }; });
+
+  function changed(){ flashes.clear(); lastSeen = ''; ui(); st.redraw(); }
+  document.getElementById('stay').addEventListener('click', () => { if (day < LAST_DAY){ day++; changed(); } });
+  document.getElementById('leave').addEventListener('click', () => { day = 0; changed(); });
+})();
+</script>
+</body>
+</html>
