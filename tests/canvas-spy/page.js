@@ -212,6 +212,16 @@ function loadPage(source, o = {}) {
   return makePage({ win, doc, clock, exposed, vars, cssMisses });
 }
 
+const FORM_CONTROL = /^(button|input|select|textarea)$/;
+// disabled itself, or sitting inside a disabled <fieldset>
+function isDisabled(el) {
+  if (!el || !FORM_CONTROL.test(el.localName || '')) return false;
+  for (let n = el; n && n.localName; n = n.parentNode) {
+    if ((n === el || n.localName === 'fieldset') && n.disabled) return true;
+  }
+  return false;
+}
+
 function makePage({ win, doc, clock, exposed, vars, cssMisses }) {
   const resolve = t => {
     if (typeof t !== 'string') return t;
@@ -271,6 +281,9 @@ function makePage({ win, doc, clock, exposed, vars, cssMisses }) {
     },
     click(target, x = 0, y = 0, extra) {
       const el = resolve(target);
+      // A browser fires no click on a disabled form control, so a page that only disables its
+      // button (no guard in the handler) is right; dispatching anyway would fail it falsely.
+      if (isDisabled(el)) return false;
       return dispatch(el, makeEvent('click', pointerInit(el, x, y, extra)));
     },
     /** Pointer event at (x, y) in the element's CSS px. */
