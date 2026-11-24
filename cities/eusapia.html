@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>埃乌萨皮娅 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与死者 · 之三 · 读到的第 38 座</p>
+    <h1>埃乌萨皮娅</h1>
+    <p class="lede">为了让从生到死不那么突然，埃乌萨皮娅的居民在地下造了一座一模一样的城。死人脱了水，只剩骨架包着一张黄皮，被送到下面接着做生前最开心的事：坐在饭桌旁、跳舞、吹小号；或者接着做他们最满意的那门手艺。只有一个戴蒙面头罩的兄弟会能下去，下面的一切消息都是他们带上来的。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="地面上一排房子和人，地底下一排一样的房子和骨头色的人，右边一口竖井，一个戴头罩的人在里面上下"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="trip" type="button">兄弟会下去一趟</button>
+    <button id="saying" type="button">换一种说法</button>
+    <button id="reset" type="button">回到刚造好的时候</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-11 16:21（心跳夜读），2026-11-25 做的，动手前回原章核过。地上一排、地下一排，六间房一模一样：饭馆、舞厅、吹小号的阳台、钟表铺、理发铺、牛棚，最右边是广场。地下那一排不是你亲眼看见的，是兄弟会上一趟带回来的样子：按「兄弟会下去一趟」，戴头罩的人顺着竖井下去，再上来，下面画的才换成他看到的；地上的人再照着改。书里只说死人的改革「虽然不多，却是深思熟虑的」，一年之间就让人认不出来；改哪几处、什么次序是我定的：每趟一两处，一处只改一次，不改回去，十二趟以后十八处没有一处还跟刚造好时一样。地下的广场比地上挤，书里说下面的猎狮人、次女高音、银行家、小提琴师、公爵夫人、被情夫供养的女人、将军，「数目之多，是活人的城里所从未达到的」。按「换一种说法」，只有两边的名字换了，画面一笔不动：书里最后一句是，在这两座姊妹城里，没办法知道谁是死者，谁是生者。测试查的就是这几条。文字是我的转述。系统设了减少动效时，兄弟会一按就回来，地上当场照着改。</p>
+
+  <nav class="cities"><a href="./phyllis.html">← 菲利德</a><a href="../index.html">全部城市</a></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: all news of the city below comes up through one hooded brotherhood; the city above
+  // copies whatever it is told, until nobody can say which city copied which.
+  const W = 1600, H = 1000, GY = 440, CAVE = 520, LB = 880, FH = 64, BW = 118;
+  const SHAFT = 1500, DOWN = 2.2, STAY = 0.8, UP = 2.2, TRIP = DOWN + STAY + UP, COPY = 1.2;
+  const BLD = '#4c4a6c', WIN = '#e8c77a', ROOF = '#6e5a7e', PROP = '#9d8f78', BONE = '#d9c48f', HOOD = '#9a3b45';
+  const EARTH = '#2c2433', CAVEBG = '#17131f';
+  const PLACES = ['饭馆', '舞厅', '吹小号的阳台', '钟表铺', '理发铺', '牛棚'];
+  const slotX = i => 150 + i * 196;
+  const SQUARE = slotX(6);
+  // What the city looked like when it was built: [floors, roof, windows per floor]
+  const BUILT = [[2, 'peak', 2], [1, 'flat', 1], [3, 'peak', 2], [2, 'dome', 1], [1, 'peak', 3], [2, 'flat', 2]];
+  const ATTR = { floors: 0, roof: 1, windows: 2 };
+  // The dead's reforms, one month at a time: few, deliberate, and never undone.
+  const PLAN = [
+    [[0, 'windows', 3], [2, 'roof', 'flat']],
+    [[4, 'floors', 2]],
+    [[1, 'roof', 'dome'], [5, 'windows', 1]],
+    [[0, 'roof', 'dome']],
+    [[3, 'floors', 3], [2, 'windows', 3]],
+    [[5, 'roof', 'peak']],
+    [[1, 'floors', 2], [4, 'windows', 2]],
+    [[3, 'roof', 'flat'], [0, 'floors', 1]],
+    [[5, 'floors', 3]],
+    [[2, 'floors', 1], [4, 'roof', 'dome']],
+    [[1, 'windows', 3]],
+    [[3, 'windows', 3]],
+  ];
+  const SAYINGS = [
+    ['地上 · 活人的埃乌萨皮娅', '地下 · 死人的埃乌萨皮娅'],
+    ['地上 · 死人照着下面造的', '地下 · 先有的那一座'],
+    ['地上 · ？', '地下 · ？'],
+  ];
+  const CROWD = '猎狮人、次女高音、银行家、小提琴师、公爵夫人、被情夫供养的女人、将军……';
+  const C = SC.palette();
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => performance.now() / 1000;
+  const clone = c => c.map(b => b.slice());
+
+  let truth, report, above, month, t0, phase, saying;
+  let st = null;
+
+  function start(){ truth = clone(BUILT); report = clone(BUILT); above = clone(BUILT); month = 0; t0 = -1; phase = 'idle'; saying = 0; }
+
+  function sameAsBuilt(city){
+    let n = 0;
+    city.forEach((b, i) => b.forEach((v, k) => { if (v === BUILT[i][k]) n += 1; }));
+    return n;
+  }
+
+  // ── drawing ──
+  function building(ctx, x, base, f){
+    const [floors, roof, win] = f, h = floors * FH, top = base - h;
+    ctx.fillStyle = BLD; ctx.fillRect(x - BW / 2, top, BW, h);
+    ctx.fillStyle = WIN;
+    for (let fl = 0; fl < floors; fl++)
+      for (let w = 0; w < win; w++){
+        const gap = BW / (win + 1);
+        ctx.fillRect(x - BW / 2 + gap * (w + 1) - 8, base - (fl + 1) * FH + 18, 16, 22);
+      }
+    ctx.fillStyle = ROOF; ctx.beginPath();
+    if (roof === 'flat') ctx.rect(x - BW / 2 - 6, top - 10, BW + 12, 10);
+    else if (roof === 'peak'){ ctx.moveTo(x - BW / 2 - 6, top); ctx.lineTo(x, top - 36); ctx.lineTo(x + BW / 2 + 6, top); ctx.closePath(); }
+    else ctx.arc(x, top, BW / 2, Math.PI, 0);
+    ctx.fill();
+  }
+
+  // the people at each place, the same above and below; only their colour differs
+  function people(ctx, i, x, base, col){
+    const fx = x + BW / 2 + 26;
+    ctx.strokeStyle = PROP; ctx.fillStyle = PROP; ctx.lineWidth = 3;
+    if (i === 0){ ctx.fillRect(fx - 4, base - 22, 44, 6); SC.figure(ctx, col, fx - 14, base, .8, 0); SC.figure(ctx, col, fx + 50, base, .8, 0); }
+    else if (i === 1){ SC.figure(ctx, col, fx + 8, base, .9, .25); SC.figure(ctx, col, fx + 30, base, .9, -.25); }
+    else if (i === 2){ SC.figure(ctx, col, fx + 10, base, .9, 0); ctx.beginPath(); ctx.moveTo(fx + 16, base - 34); ctx.lineTo(fx + 40, base - 40); ctx.stroke(); }
+    else if (i === 3){ ctx.fillRect(fx + 22, base - 56, 14, 56); SC.figure(ctx, col, fx + 8, base, .9, .2); }
+    else if (i === 4){ SC.figure(ctx, col, fx, base, .9, 0); ctx.fillRect(fx + 18, base - 18, 26, 6); SC.figure(ctx, col, fx + 30, base - 12, .7, 0); }
+    else { ctx.beginPath(); ctx.ellipse(fx + 34, base - 18, 22, 11, 0, 0, 6.29); ctx.fill(); SC.figure(ctx, col, fx + 4, base, .8, .3); }
+  }
+
+  function square(ctx, base, col, n){
+    for (let k = 0; k < n; k++) SC.figure(ctx, col, SQUARE - 60 + (k % 6) * 26, base - Math.floor(k / 6) * 16, .75, 0);
+  }
+
+  function city(ctx, base, c, col, crowd){
+    c.forEach((f, i) => { building(ctx, slotX(i), base, f); people(ctx, i, slotX(i), base, col); });
+    square(ctx, base, col, crowd);
+  }
+
+  function brother(ctx, now){
+    let y = GY;
+    if (phase === 'trip' && !still){
+      const t = now - t0;
+      if (t < DOWN) y = GY + (LB - GY) * (t / DOWN);
+      else if (t < DOWN + STAY) y = LB;
+      else if (t < TRIP) y = LB - (LB - GY) * ((t - DOWN - STAY) / UP);
+    }
+    ctx.fillStyle = HOOD;
+    ctx.beginPath(); ctx.moveTo(SHAFT - 12, y); ctx.lineTo(SHAFT, y - 50); ctx.lineTo(SHAFT + 12, y); ctx.closePath(); ctx.fill();
+  }
+
+  function tick(now){
+    if (phase !== 'trip') return;
+    const t = still ? Infinity : now - t0;
+    if (t >= TRIP && report !== truth && JSON.stringify(report) !== JSON.stringify(truth)){
+      report = clone(truth);
+      caption('兄弟会上来说：下面又改了。');
+    }
+    if (t >= TRIP + COPY){
+      above = clone(report); phase = 'idle';
+      caption('地上的人照着改了。');
+      ui();
+    }
+  }
+
+  function draw(ctx){
+    const now = clock();
+    tick(now);
+    const g = ctx.createLinearGradient(0, 0, 0, GY); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, GY);
+    ctx.fillStyle = EARTH; ctx.fillRect(0, GY, W, CAVE - GY);
+    ctx.fillStyle = CAVEBG; ctx.fillRect(0, CAVE, W, H - CAVE);
+    // the shaft, the only way between the two
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(SHAFT - 22, GY); ctx.lineTo(SHAFT - 22, LB); ctx.moveTo(SHAFT + 22, GY); ctx.lineTo(SHAFT + 22, LB); ctx.stroke();
+    city(ctx, GY, above, C.ink, 3);
+    city(ctx, LB, report, BONE, 14);
+    // the dead have a brotherhood too
+    ctx.fillStyle = BONE;
+    ctx.beginPath(); ctx.moveTo(SHAFT + 30, LB); ctx.lineTo(SHAFT + 42, LB - 50); ctx.lineTo(SHAFT + 54, LB); ctx.closePath(); ctx.fill();
+    brother(ctx, now);
+    // names: which city is which depends on who is telling it
+    ctx.font = '400 24px ' + C.display; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = C.dim;
+    ctx.fillText(SAYINGS[saying][0], 24, 22);
+    ctx.fillText(SAYINGS[saying][1], 24, CAVE + 14);
+    ctx.font = '400 21px ' + C.display; ctx.textAlign = 'center'; ctx.fillStyle = C.dim;
+    PLACES.forEach((p, i) => ctx.fillText(p, slotX(i), LB + 14));
+    ctx.fillText('广场', SQUARE + 10, LB + 14);
+    ctx.font = '400 20px ' + C.display; ctx.textAlign = 'right';
+    ctx.fillText('地下的广场：' + CROWD, SHAFT - 40, CAVE + 50);
+  }
+
+  // ── page ──
+  function ui(){
+    const busy = phase === 'trip', done = month >= PLAN.length;
+    const btn = document.getElementById('trip');
+    btn.disabled = busy || done;
+    btn.textContent = done ? '已经一年了' : busy ? '兄弟会还在下面' : '兄弟会下去一趟';
+    document.getElementById('meter').textContent = '第 ' + month + ' 个月 · 地上跟刚造好时一样的还剩 ' + sameAsBuilt(above) + ' / 18 处';
+    let m = '为了使由生到死的过渡不那么突然，这里的居民在地下建造了一座一模一样的城市。';
+    if (month > 0) m = '死人们也在自己的城市进行改革，虽然不多，却是深思熟虑的。兄弟会的人所说的一切，活着的人也要做一做。';
+    if (done && !busy) m = '死人的埃乌萨皮娅能在一年之间变得让人认不出来。地上照着改，也认不出来了。';
+    if (saying === 1) m = '人们说，这不仅是现在才发生的事：是那些死人依照地下城市的样子建造了地上埃乌萨皮娅。';
+    if (saying === 2) m = '还有人说，在这两座姊妹城里，没办法知道谁是死者，谁是生者。';
+    document.getElementById('moral').textContent = m;
+  }
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  document.getElementById('trip').addEventListener('click', () => {
+    if (phase === 'trip' || month >= PLAN.length) return;
+    truth = clone(truth);
+    PLAN[month].forEach(([b, a, v]) => { truth[b][ATTR[a]] = v; });
+    month += 1; t0 = clock(); phase = 'trip';
+    caption('戴头罩的兄弟顺着竖井下去了。');
+    ui();
+    if (still) tick(clock());
+    st.redraw();
+  });
+  document.getElementById('saying').addEventListener('click', () => {
+    saying = (saying + 1) % SAYINGS.length;
+    ui(); st.redraw();
+  });
+  document.getElementById('reset').addEventListener('click', () => {
+    start(); caption('刚造好：上下两座一模一样。'); ui(); st.redraw();
+  });
+
+  start();
+  st = SC.stage(document.getElementById('c'), W, H, draw);
+  caption('刚造好：上下两座一模一样。'); ui();
+})();
+</script>
+</body>
+</html>
