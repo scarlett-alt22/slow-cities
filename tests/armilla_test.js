@@ -1,5 +1,6 @@
 // 无头跑 armilla.html：桩掉 DOM/canvas，记录每一次绘图调用（含参数），时钟钉死。
 // 检查：①听哪种解释，画出来的东西逐调用一模一样 ②姑娘任何时候都在、个数不随时间变 ③歌声只在 5–10 点 ④白天水是彩色、夜里不是 ⑤滑块/按钮/reset
+// ⑥水任何钟点都在流（每个钟点画的水线一样多）⑦水管任何钟点都一样（2026-11-25 补：手工变异抓到 8/11，「夜里水停了」能让 ④ 白过，「下午水管挪位置」没人管；「只有前两个人唱歌」不在测试声称的范围里，没补）
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const shared = fs.readFileSync(process.argv[3], 'utf8');
@@ -45,6 +46,16 @@ check(songs(7) > 0 && songs(9.5) > 0 && songs(4.5) === 0 && songs(10) === 0 && s
 const colour = h => { setHour(h); return log.some(l => /\|hsl\(/.test(l)); };
 check(colour(13) && !colour(2) && !colour(23), '白天水是彩色，夜里不是');
 check(/^07:00 · 早上/.test((setHour(7), el('time').textContent)) && /^23:30 · 夜里/.test((setHour(23.5), el('time').textContent)), '时间标签: ' + el('time').textContent);
+const strip = l => l.split('|')[0];
+const waterLines = h => { setHour(h); let dashed = false, n = 0;
+  for (const l of log){ if (l.startsWith('setLineDash(')) dashed = strip(l) !== 'setLineDash()'; else if (dashed && strip(l) === 'stroke()') n++; }
+  return n; };
+const wl = [0, 3, 7, 12, 17, 22].map(waterLines);
+check(wl.every(n => n === wl[0]) && wl[0] > 20, '⑥ 每个钟点都画了一样多的水线: ' + wl.join(' '));
+const pipesAt = h => { setHour(h); const a = log.findIndex(l => l.startsWith('lineTo(1540.00,')), b = log.findIndex(l => l.startsWith('setLineDash('));
+  return a > 0 && b > a ? log.slice(a + 2, b).map(strip).join(';') : ''; };
+const p0 = pipesAt(0), pipeStrokes = p0.split(';').filter(x => x === 'stroke()').length;
+check(pipeStrokes >= 18 && [3, 7, 12, 17, 22].every(h => pipesAt(h) === p0), '⑦ 水管 ' + pipeStrokes + ' 段，每个钟点位置都一样');
 el('reset').handlers.click();
 check(/听过的解释 0 \/ 4/.test(el('meter').textContent) && el('why').children.every(b => b.attrs['aria-pressed'] === 'false'), 'reset');
 console.log(fail ? '失败 ' + fail : '全过');
