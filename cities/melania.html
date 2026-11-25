@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>梅拉尼亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与死者 · 之一 · 读到的第 30 座</p>
+    <h1>梅拉尼亚</h1>
+    <p class="lede">每回走进梅拉尼亚的广场，都听到同一段对话：吹牛的军人和寄生虫出门，吝啬的父亲在门槛上叮嘱恋爱中的女儿，被愚蠢的仆人打断，仆人正要给拉皮条的女人送一张字条。许多年后再来，对话还在继续，只是说话的人换了。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="广场上九个人分三组站着，每人脚下写着他演的角色；上方是正在说的三句台词，每句前面的颜色是此刻说它的那个人"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="years" type="button">许多年过后</button>
+    <button id="watch" type="button" aria-pressed="false">一直看着</button>
+    <button id="reset" type="button">回到第一次走进广场</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-08 22:45（心跳夜读），2026-11-26 做的，动手前回原章核过。广场上九个角色排成三串，是书里写的那三串：寄生虫、拉皮条的女人、父亲死了，演吹牛的军人、女儿、仆人的人顶上去，他们空出的位置又由演伪君子、女友、星相家的人顶上。所以这里每串里的人只会往老的那一格挪，死一个，后面一个接一个往前顶，最后一格来一个新人，直到九个角色又都有人演。按「许多年过后」过十五年。台词是我编的，书里只写了谁在场、谁对谁；每九十年换一场，换场时只有两个角色改了名，书里点到的愤怒的老人和伶牙俐齿的小女仆、放高利贷的和被剥夺继承的年轻人、护士和伤心的私生女，是从这几场里来的。书里说演出在朝收尾走，没说收尾是什么，所以第四场以后这里一直是第四场。每句台词前面那一点颜色，是此刻说这句话的人：同一句话，换了人，目光和声音就不一样了。书里还说，有时一个人同时演好几个角色，有时一个角色由几千几万人演，这里没做。系统设了减少动效时，人不滑动，直接站到新的格子上。</p>
+
+  <nav class="cities"><a href="./eusapia.html">← 埃乌萨皮娅</a><a href="../index.html">全部城市</a></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: the lines stay in the square and people step into them one at a time;
+  // nobody lives long enough to hear that the play has changed.
+  const W = 1600, H = 1000, FLOOR = 760, STEP = 15, SCENE = 90, SLIDE = .9;
+  const GX = [290, 800, 1310], DX = 150;
+  const slotX = (g, r) => GX[g] + (r - 1) * DX;
+  // Three chains, young → old, as in the book. Each scene renames at most two parts.
+  const SCENES = [
+    { names: [['伪君子', '吹牛的军人', '寄生虫'], ['女友', '恋爱中的女儿', '拉皮条的女人'], ['星相家', '愚蠢的仆人', '吝啬的父亲']],
+      lines: [[0, 1, '我一个人，挡住了整整一团人。'], [2, 2, '孩子，最后再说一遍，那个人不行——'], [2, 1, '老爷，这张字条是送给谁来着？']] },
+    { names: [['伪君子', '吹牛的军人', '寄生虫'], ['伤心的私生女', '恋爱中的女儿', '护士'], ['星相家', '愚蠢的仆人', '吝啬的父亲']],
+      lines: [[1, 2, '别哭了，他总有一天会认你的。'], [0, 1, '那一团人，后来是两团。'], [2, 2, '谁动过我的钱箱？']] },
+    { names: [['伪君子', '吹牛的军人', '寄生虫'], ['伤心的私生女', '恋爱中的女儿', '护士'], ['伶牙俐齿的小女仆', '愚蠢的仆人', '愤怒的老人']],
+      lines: [[2, 2, '你这张嘴，迟早要惹祸。'], [2, 0, '惹祸的是你的钱箱，老爷。'], [1, 2, '他说过会来的，就会来。']] },
+    { names: [['被剥夺继承的年轻人', '吹牛的军人', '放高利贷的'], ['伤心的私生女', '恋爱中的女儿', '护士'], ['伶牙俐齿的小女仆', '愚蠢的仆人', '愤怒的老人']],
+      lines: [[0, 2, '站住！你父亲欠的，得你来还。'], [0, 0, '他什么也没留给我，连这笔债也是借来的。'], [0, 1, '当年我一个人，挡住了三团。']] }
+  ];
+
+  const C = SC.palette();
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => performance.now() / 1000;
+
+  let year, slots, nextId, rand, moves, watching = false, everyone;
+
+  function hueOf(id){ return (id * 137.508 + 20) % 360; }
+  function colourOf(a){ return 'hsl(' + hueOf(a.id).toFixed(1) + ',62%,68%)'; }
+
+  function newActor(g, enterYear){
+    const enterAge = 16 + rand() * 8, life = 60 + rand() * 26;
+    const a = { id: nextId++, g, born: enterYear - enterAge, entered: enterYear, dies: enterYear - enterAge + life };
+    everyone.push(a);
+    return a;
+  }
+
+  function start(){
+    year = 0; nextId = 1; rand = SC.rng(1108); everyone = []; moves = [];
+    slots = [[null, null, null], [null, null, null], [null, null, null]];
+    for (let g = 0; g < 3; g++) for (let r = 0; r < 3; r++){
+      const age = 22 + r * 19 + rand() * 6, left = 4 + rand() * (r === 2 ? 22 : r === 1 ? 40 : 55);
+      const a = { id: nextId++, g, born: -age, entered: -Infinity, dies: left };
+      everyone.push(a); slots[g][r] = a;
+    }
+  }
+
+  const scene = y => Math.min(SCENES.length - 1, Math.floor(y / SCENE));
+  const nameOf = (y, g, r) => SCENES[scene(y)].names[g][r];
+
+  // Move time forward; everyone who dies on the way leaves a gap that the chain behind them fills.
+  function advance(dy){
+    const end = year + dy, now = clock();
+    const said = [];
+    moves = [];
+    for (;;){
+      let who = null, wg = -1, wr = -1;
+      for (let g = 0; g < 3; g++) for (let r = 0; r < 3; r++){
+        const a = slots[g][r];
+        if (a.dies <= end && (!who || a.dies < who.dies)){ who = a; wg = g; wr = r; }
+      }
+      if (!who) break;
+      const t = who.dies;
+      const bits = [];
+      slots[wg][wr] = null;
+      moves.push({ id: who.id, g: wg, r: wr, gone: true });
+      for (let r = wr; r > 0; r--){
+        const up = slots[wg][r - 1];
+        slots[wg][r] = up; slots[wg][r - 1] = null;
+        moves.push({ id: up.id, g: wg, from: r - 1, r });
+        bits.push('演' + nameOf(t, wg, r - 1) + '的顶上去演' + nameOf(t, wg, r));
+      }
+      const n = newActor(wg, t);
+      slots[wg][0] = n;
+      moves.push({ id: n.id, g: wg, r: 0, fresh: true });
+      said.push({ died: nameOf(t, wg, wr), chain: bits, fresh: nameOf(t, wg, 0) });
+    }
+    const before = scene(year);
+    year = end;
+    moves.forEach(m => { m.t0 = now; });
+    // one death: say the whole chain, as the book does; several: just who, and how many came in
+    let cap = '这些年里台上没有人死。';
+    if (said.length === 1) cap = said[0].died + '死了，' + said[0].chain.concat('新来一个人演' + said[0].fresh).join('，') + '。';
+    if (said.length > 1) cap = said.map(d => d.died).join('、') + '死了，每一串后面的人往前顶，新来 ' + said.length + ' 个人。';
+    if (scene(year) !== before) cap += ' 换到第 ' + (scene(year) + 1) + ' 场了。';
+    caption(cap);
+    ui(); st.redraw();
+  }
+
+  function onStage(){ const s = []; for (let g = 0; g < 3; g++) for (let r = 0; r < 3; r++) s.push(slots[g][r]); return s; }
+
+  function drawFigure(ctx, a, x, alpha){
+    ctx.globalAlpha = alpha;
+    SC.figure(ctx, colourOf(a), x, FLOOR, 2.2, 0);
+    ctx.globalAlpha = 1;
+  }
+
+  function draw(ctx){
+    const now = clock();
+    const g0 = ctx.createLinearGradient(0, 0, 0, H); g0.addColorStop(0, C.sky); g0.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g0; ctx.fillRect(0, 0, W, H);
+    // the houses round the square, a door behind each group (the father's threshold is one of them)
+    ctx.strokeStyle = C.rule; ctx.lineWidth = 2;
+    for (let g = 0; g < 3; g++){
+      const x = GX[g];
+      ctx.strokeRect(x - 230, 420, 460, FLOOR - 420);
+      ctx.beginPath(); ctx.moveTo(x - 250, 420); ctx.lineTo(x, 360); ctx.lineTo(x + 250, 420); ctx.stroke();
+      ctx.strokeRect(x - 34, FLOOR - 150, 68, 150);
+    }
+    ctx.beginPath(); ctx.moveTo(40, FLOOR); ctx.lineTo(W - 40, FLOOR); ctx.stroke();
+
+    const k = scene(year), sc = SCENES[k];
+    // who stands where (sliding in from where they were, if they just moved)
+    for (let g = 0; g < 3; g++) for (let r = 0; r < 3; r++){
+      const a = slots[g][r];
+      const m = moves.find(mm => mm.id === a.id && !mm.gone);
+      const p = still || !m ? 1 : Math.min(1, (now - m.t0) / SLIDE);
+      let x = slotX(g, r), alpha = 1;
+      if (m && m.from != null) x = slotX(g, m.from) + (slotX(g, r) - slotX(g, m.from)) * p;
+      if (m && m.fresh) alpha = p;
+      drawFigure(ctx, a, x, alpha);
+    }
+    // the dead fade where they stood
+    if (!still) moves.filter(m => m.gone).forEach(m => {
+      const p = (now - m.t0) / SLIDE; if (p >= 1) return;
+      ctx.globalAlpha = .6 * (1 - p); SC.figure(ctx, C.dim, slotX(m.g, m.r), FLOOR - 40 * p, 2.2, 0); ctx.globalAlpha = 1;
+    });
+    // the parts: these stay (the middle one a line lower, so long names don't run into each other)
+    ctx.font = '400 30px ' + C.display; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = C.ink;
+    for (let g = 0; g < 3; g++) for (let r = 0; r < 3; r++) ctx.fillText(sc.names[g][r], slotX(g, r), FLOOR + (r === 1 ? 68 : 24));
+    // which way the chain moves: towards the old end
+    ctx.strokeStyle = C.dim; ctx.lineWidth = 1.5;
+    for (let g = 0; g < 3; g++){
+      const y = FLOOR + 128, a = slotX(g, 0) - 40, b = slotX(g, 2) + 40;
+      ctx.beginPath(); ctx.moveTo(a, y); ctx.lineTo(b, y); ctx.lineTo(b - 12, y - 7); ctx.moveTo(b, y); ctx.lineTo(b - 12, y + 7); ctx.stroke();
+    }
+    // the lines being said, each marked with the colour of whoever says it now
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.font = '400 28px ' + C.display; ctx.fillStyle = C.dim;
+    ctx.fillText('第 ' + (k + 1) + ' 场', 70, 66);
+    sc.lines.forEach((ln, i) => {
+      const y = 136 + i * 72, sp = slots[ln[0]][ln[1]];
+      ctx.fillStyle = colourOf(sp); ctx.beginPath(); ctx.arc(82, y, 13, 0, 6.29); ctx.fill();
+      ctx.font = '400 34px ' + C.display; ctx.fillStyle = C.ink;
+      ctx.fillText(sc.names[ln[0]][ln[1]] + '：「' + ln[2] + '」', 110, y);
+    });
+  }
+
+  function ui(){
+    const k = scene(year), all = onStage();
+    const firstLeft = all.filter(a => a.id <= 9).length;
+    document.getElementById('meter').textContent = '过了 ' + year + ' 年 · 第 ' + (k + 1) + ' 场';
+    let m = '每回走进广场，都是这一段对话。';
+    if (year > 0 && firstLeft < 9) m = '台词一句没改，说它的人换了。';
+    if (firstLeft === 0) m = '第一次走进广场时台上那九个人，一个都不在了。对话还在接着说。';
+    if (k > 0){
+      // counted, not asserted: whoever is on stage now and stepped on before this scene began
+      const was = all.filter(a => a.entered < k * SCENE).length, first = all.filter(a => a.entered < SCENE).length;
+      m = '已经是第 ' + (k + 1) + ' 场了。台上九个人里，上一场就在台上的有 ' + was + ' 个';
+      if (k >= 2) m += '；第一场时就在台上的，' + (first ? '还有 ' + first + ' 个' : '一个也没有');
+      m += '。';
+    }
+    if (k === SCENES.length - 1 && year >= SCENES.length * SCENE) m = '演出在朝收尾走。收尾是什么样，书里没写，这里也一直是第 ' + SCENES.length + ' 场。';
+    document.getElementById('moral').textContent = m;
+    const w = document.getElementById('watch');
+    w.setAttribute('aria-pressed', String(watching)); w.textContent = watching ? '不看了' : '一直看着';
+  }
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  function reset(){ setWatch(false); start(); caption('第一次走进梅拉尼亚的广场。'); ui(); st.redraw(); }
+
+  document.getElementById('years').addEventListener('click', () => advance(STEP));
+  // Watching is just "许多年过后" pressed for you, every 1.4 seconds, until you stop.
+  let timer = null;
+  function setWatch(on){
+    watching = on;
+    if (timer){ clearInterval(timer); timer = null; }
+    if (on) timer = setInterval(() => advance(STEP), 1400);
+    ui();
+  }
+  document.getElementById('watch').addEventListener('click', () => setWatch(!watching));
+  document.getElementById('reset').addEventListener('click', reset);
+
+  start();
+  const st = SC.stage(document.getElementById('c'), W, H, draw);
+  caption('第一次走进梅拉尼亚的广场。'); ui();
+})();
+</script>
+</body>
+</html>
