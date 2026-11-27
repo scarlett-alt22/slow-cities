@@ -1,4 +1,5 @@
 // 无头跑 zenobia.html：桩掉 DOM/canvas，记录每次绘图调用（含 strokeStyle/alpha），时钟可拨。测试侧注入只读钩子。
+// 11-27 补：手工变异 14 个抓到 10 个，补三处——挡住数用另一种算法（取点）复核、说话的人那个小人亮、说的城是虚线；再核说的话里平台数对得上。
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const shared = fs.readFileSync(process.argv[3], 'utf8');
@@ -49,6 +50,9 @@ let firstAskLog;
 for (let i = 0; i < 6; i++){ const L = ask(); if (i === 0) firstAskLog = L; dreams.push(T.dream); hiddenSeq.push(T.hidden()[0]); }
 check(!firstAskLog.some(l => /^strokeRect.*\|--chalk\|/.test(l)), '问过一个人以后最早那层就不再特别亮');
 check(firstAskLog.some(l => /hsl\(/.test(l)), '第一个人说的城画出了彩带');
+const heads = L => L.filter(l => /^arc\(0\.00,-38\.00,6\.00/.test(l));
+check(heads(firstAskLog).filter(l => /\|--lamp\|/.test(l)).length === 1, '问过一个人以后正好一个小人亮着（说话的那个）');
+check(firstAskLog.some(l => /^setLineDash\(8,6\)/.test(l)), '他说的城画成虚线');
 
 const ok = dreams.every(d => d.filter(p => p.type !== 'ribbon').every(p => baseTypes.has(p.type)) && d.some(p => p.type === 'ribbon'));
 check(ok, '六个人说的城：除了彩带，零件全是最早那层里有的；每座都有彩带');
@@ -57,6 +61,13 @@ check(new Set(dreams.map(sig).concat([sig(base)])).size === 7, '六个人说的�
 check(standing(), '六层以后，每根桩、每架梯照样往下落在地上或真有的平台上');
 check(T.layers.length === 6 && T.asked === 6 && T.layers[5] === dreams[4], '问第 n+1 个人时第 n 个人的城搭上去了（6 问 → 1+5 层，第 6 个还在虚线里）');
 check(hiddenSeq.every((v, i) => i === 0 || v >= hiddenSeq[i - 1]) && hiddenSeq[0] === 0 && hiddenSeq[6] > 0, '最早那层被挡住的件数从 0 起、只增不减: ' + hiddenSeq.join(' '));
+// Recount "hidden" another way: sample points inside each first-layer thing (inset 4) and see if any later box covers one.
+const recount = () => { const first = T.layers[0].filter(p => !/deck|pile|ladder/.test(p.type)), later = [].concat(...T.layers.slice(1)).map(T.box).filter(Boolean);
+  return first.filter(p => { const a = T.box(p); for (let i = 1; i < 8; i++) for (let j = 1; j < 8; j++){ const x = a[0] + 4 + (a[2] - a[0] - 8) * i / 8, y = a[1] + 4 + (a[3] - a[1] - 8) * j / 8;
+    if (later.some(b => b[0] < x && x < b[2] && b[1] < y && y < b[3])) return true; } return false; }).length; };
+check(Math.abs(recount() - hiddenSeq[6]) <= 2, '挡住数用取点的办法再数一遍对得上（页面 ' + hiddenSeq[6] + '，取点 ' + recount() + '）');
+const decksSaid = +((el('caption').textContent.match(/(\d+) 层平台/) || [0, -1])[1]);
+check(decksSaid === T.dream.filter(p => p.type === 'deck').length, '说的话里平台数跟画的一样（' + decksSaid + '）');
 check(new RegExp('被后来的挡住或穿过 ' + hiddenSeq[6] + ' / ').test(el('meter').textContent) && el('moral').textContent.startsWith('问珍诺比亚算幸福'), 'meter/DONE: ' + el('meter').textContent);
 
 // Every later layer is drawn after the ones below it (so "挡住" is what you see, not only what we count).
