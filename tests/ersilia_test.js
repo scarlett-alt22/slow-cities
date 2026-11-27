@@ -1,4 +1,5 @@
 // 无头跑 ersilia.html：桩掉 DOM/canvas，时钟可拨，测试侧注入只读钩子。
+// 11-28 补：手工变异 14 个只抓到 6 个，补读画面——绳的颜色、代表绳是虚线、柱子画了、选中的房子亮、门牌号；另补最挤处只数头顶那段、正好 8 根时搬、搬的时候不再长绳。
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const shared = fs.readFileSync(process.argv[3], 'utf8');
@@ -40,6 +41,7 @@ const hs = T.city.houses;
 check(hs.length === 7 && hs.every((h, i) => i === 0 || h.x - h.w / 2 > hs[i - 1].x + hs[i - 1].w / 2) && hs[0].x - hs[0].w / 2 > 0 && hs[6].x + hs[6].w / 2 < 1600, '七座房子不重叠、都在画面里');
 
 pressHouse(1); check(T.picked === 1 && /第 2 家/.test(cap()), '点第 2 家：选中');
+check(frame().some(l => /^stroke\(\)\|--lamp\|/.test(l)), '画面：选中的那家描成灯色');
 pressHouse(4); check(T.city.cords.length === 1 && T.picked === null && /黑绳：第 2 家和第 5 家是亲戚/.test(cap()), '再点第 5 家：拉上一根黑绳（默认亲缘，中译本顺序）');
 const cd = T.city.cords[0];
 check(Math.abs(cd.a[0] - (hs[1].x + hs[1].w / 2)) < .01 && Math.abs(cd.b[0] - (hs[4].x - hs[4].w / 2)) < .01, '绳挂在两家相对的那面墙上');
@@ -51,6 +53,12 @@ press(800, 100); check(T.picked === null, '点天空：什么都不选');
 
 // crowd: both cords span houses 2..5 → 2 overhead there
 check(T.crowd() === 2, '最挤处 2 根：' + T.crowd());
+{ const f = frame(), cd0 = T.city.cords[0];
+  check(f.some(l => /^stroke\(\)\|#05070d\|/.test(l)) && f.some(l => /^stroke\(\)\|--ink\|/.test(l)), '画面：亲缘那根是黑的、交易那根是白的');
+  check(f.some(l => l.startsWith('moveTo(' + cd0.a[0].toFixed(1) + ',' + T.GROUND.toFixed(1) + ')')), '画面：挂绳的墙那里立着柱子');
+  check(f.some(l => l.startsWith('fillText(1,')) && f.some(l => l.startsWith('fillText(7,')) && !f.some(l => l.startsWith('fillText(0,')), '画面：门牌 1 到 7'); }
+el('kinds').children[3].handlers.click(); pressHouse(5); pressHouse(6);
+check(frame().some(l => l.startsWith('setLineDash(14,14)')), '画面：代表那根画成黑白相间的虚线');
 // the posts stay; the houses leave
 const f1 = frame();
 check(f1.some(l => l.startsWith('quadraticCurveTo')), '画面里画了绳');
@@ -58,11 +66,14 @@ check(f1.some(l => l.startsWith('quadraticCurveTo')), '画面里画了绳');
 // years until it is crowded
 const R = process.env.REDUCE, gen0 = T.city.gen; let before = 0;
 const live = () => !T.leaving && T.ruins.length === 0;
-let guard = 0; while (live() && guard++ < 40){ before = T.city.cords.length; el('year').handlers.click(); }
+let guard = 0, under = true; while (live() && guard++ < 40){ before = T.city.cords.length; if (T.crowd() >= T.LIMIT) under = false; el('year').handlers.click(); }
+check(under, '没搬之前最挤处一直不到 ' + T.LIMIT + ' 根');
 if (!R){
   before = T.city.cords.length;
   check(!!T.leaving && T.crowd() >= T.LIMIT && el('year').disabled, '一年年过去，最挤处到 ' + T.LIMIT + ' 根：开始搬，按钮停了（' + guard + ' 年）');
+  check(T.crowd() === T.LIMIT, '正好 ' + T.LIMIT + ' 根时开始搬（' + T.crowd() + '）');
   pressHouse(0); check(/正在搬/.test(cap()) && T.city.cords.length === before, '搬的时候点房子：不拉绳');
+  T.year(); check(T.city.cords.length === before, '搬的时候过一年：不再长绳');
 } else { before = T.ruins[0].cords.length; check(T.ruins.length === 1 && guard < 10 && T.crowd(T.ruins[0]) >= T.LIMIT, '减少动效：挤满的那一下直接搬完（' + guard + ' 年）'); }
 if (!process.env.REDUCE){
   at(NOW / 1000 + T.DUR * .3); const mid = frame();
@@ -85,6 +96,9 @@ check(T.ruins.length === 3 && /只剩一张张关系的网/.test(el('moral').tex
 const slots = T.ruins.map(r => r.at.x + ',' + r.at.y);
 check(new Set(slots).size === 3, '三座旧城各占一个位置');
 // determinism: reset and replay gives the same first-city cords
+el('reset').handlers.click();
+T.tie(0, 1, 0); T.tie(4, 5, 0);
+check(T.crowd() === 1, '最挤处只数头顶那段：1-2 家一根、5-6 家一根，最挤处是 1 根（' + T.crowd() + '）');
 el('reset').handlers.click();
 check(T.ruins.length === 0 && T.city.gen === 0 && T.city.cords.length === 0 && /旧艾尔西里亚 0 座/.test(meter()), '重来：回到第 1 座');
 console.log(fail ? fail + ' 条没过' : '全过');
