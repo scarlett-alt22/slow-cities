@@ -4,6 +4,8 @@
 // 检查：①每一帧只画一面（正面有 --lamp 没有 --dim，背面反过来），从不两面一起画 ②画哪一面跟测试自己的规则对得上，侧面只画一条竖线
 // ③两面是同一张纸：背面轮廓＝正面轮廓左右翻，横向缩放从不为负（不画镜像字）④翻面次数只在真换面时加，走到侧面再退回不算
 // ⑤按钮：正常动效时中途在侧面停住（≥0.5 秒），说「只剩一条线」；减少动效时直接翻过去，不说没画出来的那条线 ⑥拖动、松手吸到侧面
+// 11-28 补（手工变异 16 个只抓到 6 个）：⑦正面画了城门两根柱子、每栋一盏灯一个人；背面底色不同、铁皮按翻过来的位置画、底下有罐头、没有人
+// ⑧右上角从天上看：城是一条线，点跟着你转 ⑨没见过侧面时翻过去，moral 换成「一张纸」那句（另起一页跑，跑完重载）
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const shared = fs.readFileSync(process.argv[3], 'utf8');
@@ -29,10 +31,11 @@ global.getComputedStyle = () => ({ getPropertyValue: n => n });
 global.performance = { now: () => NOW };
 global.requestAnimationFrame = () => {};
 eval(shared); global.SC = window.SC;
+let figs = 0; { const fig = SC.figure; SC.figure = function(){ figs++; return fig.apply(this, arguments); }; }
 eval(inline);
 
 let fail = 0; const check = (ok, msg) => { console.log((ok ? '✓ ' : '✗ ') + msg); if (!ok) fail++; };
-const T = global.__T;
+let T = global.__T;
 
 // Read one frame off the recorded calls.
 function frame(){
@@ -42,7 +45,7 @@ function frame(){
   if (si < 0){
     const line = cs.some((c, i) => c[0] === 'moveTo' && c[1][0] === CX && c[1][1] === GY && cs[i + 1] && cs[i + 1][0] === 'lineTo' && cs[i + 1][1][0] === CX && cs[i + 1][1][1] < GY - 300);
     const lamp = cs.some(c => c[1] === '--lamp');
-    return { face: line && !lamp ? 'edge' : 'nothing?', sx: null };
+    return { face: line && !lamp ? 'edge' : 'nothing?', sx: null, cs, sl: [] };
   }
   let d = 1, j = si + 1;
   for (; j < cs.length; j++){ if (cs[j][0] === 'save') d++; if (cs[j][0] === 'restore' && --d === 0) break; }
@@ -51,21 +54,45 @@ function frame(){
   const dim = sl.some(c => c[0].startsWith('=') && c[1] === '--dim');
   const pts = [];
   for (const c of sl){ if (c[0] === 'moveTo' || c[0] === 'lineTo') pts.push(c[1].slice()); if (c[0] === 'closePath') break; }
-  return { face: lamp && !dim ? 'front' : dim && !lamp ? 'back' : 'mixed', sx: cs[si][1][0], pts };
+  return { face: lamp && !dim ? 'front' : dim && !lamp ? 'back' : 'mixed', sx: cs[si][1][0], pts, cs, sl };
 }
 const expect = a => Math.cos(a) > .04 ? 'front' : Math.cos(a) < -.04 ? 'back' : 'edge';
 const key = k => handlers['c:keydown']({ key: k });
 const meter = () => el('meter').textContent, moral = () => el('moral').textContent, cap = () => el('caption').textContent;
 
+// ⑨ a fresh page that never stood side on: one drag straight past the edge to the back
+{ handlers['c:pointerdown']({ clientX: 600, clientY: 500, pointerId: 1 });
+  handlers['c:pointermove']({ clientX: 1000, clientY: 500 });
+  handlers['c:pointerup']({});
+  const fb = frame();
+  check(fb.face === 'back' && /一张纸/.test(moral()) && !/背贴着背/.test(moral()), '没见过侧面就翻到背面：moral 换成「一张纸」那句');
+  eval(inline); T = global.__T; }
+
 // ① start
 let f0 = frame();
 check(f0.face === 'front' && /正面 · 翻过 0 次/.test(meter()) && /另一面/.test(moral()), '开头是正面: ' + meter());
 const frontPts = f0.pts;
+const nseg = (frontPts.length - 2) / 2;
+// ⑦ what the front carries
+{ let fill = null, lamps = 0, cols = 0; const sl = f0.sl;
+  for (let i = 0; i < sl.length; i++){ const c = sl[i];
+    if (c[0] === '=fillStyle') fill = c[1];
+    if (c[0] === 'arc' && c[1][2] === 18 && fill === '--lamp') lamps++;
+    if (c[0] === 'moveTo' && c[1][1] === GY && sl[i + 1] && sl[i + 1][0] === 'lineTo' && sl[i + 1][1][0] === c[1][0] && sl[i + 1][1][1] === GY - 300) cols++; }
+  check(cols === 2, '正面：城门两根柱子（' + cols + '）');
+  check(lamps === nseg - 1, '正面：除了城门每栋一盏水母灯（' + lamps + '/' + (nseg - 1) + '）');
+  figs = 0; frame(); check(figs === nseg - 1, '正面：除了城门每栋底下一个人（' + figs + '）');
+  check(f0.sl.find(c => c[0] === '=fillStyle')[1] === '--sky-hi', '正面底色是亮的'); }
+// ⑧ the map, seen from above
+const dotAt = cs => { const d = cs.find(c => c[0] === 'arc' && c[1][2] === 9); return d && [Math.round(d[1][0]), Math.round(d[1][1])]; };
+const mapLine = cs => cs.some((c, i) => c[0] === 'moveTo' && c[1][0] === 1404 && c[1][1] === 135 && cs[i + 1][0] === 'lineTo' && cs[i + 1][1][0] === 1496);
+check(mapLine(f0.cs) && JSON.stringify(dotAt(f0.cs)) === '[1450,205]', '从天上看：城是一条线，你站在它正前方 ' + JSON.stringify(dotAt(f0.cs)));
 
 // ④ to the edge and back: no flip counted
 for (let i = 0; i < 6; i++) key('ArrowRight');
 let fe = frame();
 check(fe.face === 'edge' && /一条线/.test(meter()) && /一条线/.test(cap()), '方向键走 6 下到侧面，只画一条线: ' + meter());
+check(mapLine(fe.cs) && JSON.stringify(dotAt(fe.cs)) === '[1380,135]', '从天上看：你转到了侧边 ' + JSON.stringify(dotAt(fe.cs)));
 check(/背贴着背/.test(moral()), '见过侧面后 moral 换成 edge 那句');
 for (let i = 0; i < 6; i++) key('ArrowLeft');
 check(frame().face === 'front' && /翻过 0 次/.test(meter()), '退回正面，不算翻面: ' + meter());
@@ -88,6 +115,15 @@ check(new RegExp('翻过 ' + ownFlips + ' 次').test(meter()) && ownFlips === 4,
 
 // ③ one sheet: the back's outline is the front's, mirrored
 const mirrored = frontPts.map(p => [-p[0], p[1]]);
+// ⑦ what the back carries, at the mirrored place
+{ let n = 0; while (frame().face !== 'back'){ key('ArrowRight'); n++; }
+  figs = 0; const fb = frame(), sl = fb.sl;
+  check(sl.find(c => c[0] === '=fillStyle')[1] === '--rule' && figs === 0, '背面：底色是暗的，没有人（' + figs + '）');
+  const rects = sl.filter(c => c[0] === 'strokeRect');
+  const x0 = -frontPts[2][0] + 4, xWrong = frontPts[1][0] + 4;
+  check(rects.some(c => Math.abs(c[1][0] - x0) < 1e-6) && !rects.some(c => Math.abs(c[1][0] - xWrong) < 1e-6), '背面：第一段的铁皮画在翻过来的位置（x=' + x0.toFixed(1) + '）');
+  check(rects.filter(c => c[1][2] === 12).length >= 20, '背面：底下堆着罐头（' + rects.filter(c => c[1][2] === 12).length + '）');
+  for (; n > 0; n--) key('ArrowLeft'); }
 check(backPts && JSON.stringify(backPts) === JSON.stringify(mirrored), '背面轮廓＝正面轮廓左右翻');
 check(JSON.stringify(backPts) !== JSON.stringify(frontPts), '轮廓本身不对称（不然上一条什么也没证明）');
 
