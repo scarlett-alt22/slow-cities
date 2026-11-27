@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>劳多米亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">城市与死者 · 之五 · 读到的第 46 座</p>
+    <h1>劳多米亚</h1>
+    <p class="lede">别的城市旁边只有一座死者的城。劳多米亚是三胞胎：生者的，死者的，还有一座尚未诞生的人的城。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" role="img" aria-label="一只立着的沙漏：上半是尚未出世者的劳多米亚，墙上满是壁龛和托架；细颈是生者的劳多米亚，几个人站在里面；下半是死者的劳多米亚，一排排没有窗户的小房子挤着往上叠"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="gen" type="button">又过一代</button>
+    <button id="dead" type="button">去死者那里找解释</button>
+    <button id="unborn" type="button">去尚未出世者那里问</button>
+    <button id="think" type="button">换一种想法</button>
+    <button id="flip" type="button" disabled title="倒不过来">把沙漏倒过来</button>
+    <button id="reset" type="button">回到开头</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-12 03:13（心跳夜读），2026-11-28 做的，动手前回原章核过。整座城画成书里最后那只沙漏：上半是尚未出世者的劳多米亚，下半是死者的劳多米亚，细颈里那几个人是生者的劳多米亚。按「又过一代」，细颈里的人落到下面，成了死者城里一间没有窗户的小房子，上面落下同样多的人补进细颈。死者那边只会越来越挤，从不变少。上半有多少人，页面从头到尾不数、也不画少：书里说去看的人只能有两种想法，不知道哪种更苦恼。按「换一种想法」在两种之间换：一种是石头上每个小孔里都挤着一漏斗一漏斗看不见的人，一代比一代多；另一种是总有一天会落完，最后一粒沙这会儿就在沙堆顶上等着。两种想法下，落下去的都一样。去死者那里，能找到对自己的解释，不完整的、自相矛盾的、令人失望的都算；去尚未出世者那里，问的都是关于自己的事，只有脚步的回声，没有回答。沙漏倒不过来，那个按钮按不动。人的样子、壁龛和小房子的画法是我定的。系统设了减少动效时，一代过去不画落下的过程，直接换好。</p>
+
+  <nav class="cities"><a href="./adelma.html">← 阿德尔玛</a><a href="../index.html">全部城市</a></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  // Core image: an hourglass that cannot be turned over; each life is a grain through the neck,
+  // and the last grain is already up there on the heap, waiting.
+  const W = 1600, H = 1000, CX = 800, TOP = 70, NECK0 = 430, NECK1 = 570, BOT = 930, RIM = 330, NECKW = 70;
+  const K = 6, FALL = 1.6, HEAP = 150;
+  const C = SC.palette();
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => performance.now() / 1000;
+  const DUST = '#b9a27a', TOMB = '#8b8496';
+
+  const REASONS = ['一个不完整的理由。', '一个自相矛盾的理由。', '一个令人失望的理由。'];
+  const ASKS = ['我能流芳百世吗？', '后人会忘掉我的羞耻吗？', '我做的事会有什么后果？'];
+  const MORALS = [
+    '生者的劳多米亚越发展，死者的劳多米亚就越往墓地墙外扩，每家每户越来越挤。',
+    '生者去死者那里找对自己的解释，找到多少都无所谓；去尚未出世者那里，问的却全是自己的事。',
+    '上面有多少人，没人数得清。去看的人只能想两种可能，不知道哪一种更苦恼。'
+  ];
+  const DONE = '死者的劳多米亚和尚未出世者的劳多米亚，是一只倒不过来的沙漏的两头。每一个从生到死，都是穿过细颈的一粒沙。最后一粒还在沙堆顶上，等着。';
+
+  // Half-width of the glass at height y.
+  function half(y){
+    if (y <= NECK0) return NECKW + (RIM - NECKW) * Math.pow((NECK0 - y) / (NECK0 - TOP), .8);
+    if (y <= NECK1) return NECKW;
+    return NECKW + (RIM - NECKW) * Math.pow((y - NECK1) / (BOT - NECK1), .8);
+  }
+
+  // The heap in the upper bulb: fixed. The page never draws it smaller, because nobody knows how many there are.
+  const heap = (() => {
+    const rand = SC.rng(46), out = [];
+    for (let r = 0; out.length < HEAP; r++){
+      const y = NECK0 - 8 - r * 9, w = half(y) - 10, n = Math.max(1, Math.floor(2 * w / 11) - r);
+      for (let i = 0; i < n && out.length < HEAP; i++) out.push({ x: CX - (n - 1) * 5.5 + i * 11 + (rand() - .5) * 2, y });
+    }
+    return out;
+  })();
+  const last = heap.reduce((a, p) => p.y < a.y ? p : a, heap[0]);   // the grain on the very top
+
+  // Funnels inside funnels, for the first way of thinking: they multiply each generation.
+  function funnels(n){
+    const rand = SC.rng(9001), out = [];
+    for (let i = 0; i < n; i++){
+      const y = TOP + 40 + rand() * (NECK0 - TOP - 90), w = half(y) - 30, x = CX + (rand() * 2 - 1) * w;
+      out.push({ x, y, s: 10 + rand() * 18 });
+    }
+    return out;
+  }
+
+  // Slots in the lower bulb, filled from the bottom up: each one a windowless little house.
+  const slots = (() => {
+    const out = [];
+    for (let y = BOT - 14; y > NECK1 + 20; y -= 16){
+      const w = half(y) - 10, n = Math.floor(2 * w / 18);
+      for (let i = 0; i < n; i++) out.push({ x: CX - (n - 1) * 9 + i * 18, y });
+    }
+    return out;
+  })();
+  const LIVE = Array.from({ length: K }, (_, i) => ({ x: CX - 50 + (i % 3) * 50, y: NECK0 + 62 + Math.floor(i / 3) * 62 }));
+
+  let gens, dead, thought, anim, asked, mine;
+
+  function draw(ctx){
+    const now = clock();
+    const f = anim ? Math.max(0, Math.min(1, (now - anim.start) / FALL)) : 1;
+    if (anim && f >= 1) anim = null;
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    // The glass.
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 3; ctx.beginPath();
+    for (let y = TOP; y <= BOT; y += 5) ctx.lineTo(CX - half(y), y);
+    for (let y = BOT; y >= TOP; y -= 5) ctx.lineTo(CX + half(y), y);
+    ctx.closePath(); ctx.stroke();
+    ctx.fillStyle = C.rule; ctx.fillRect(CX - RIM - 30, TOP - 16, 2 * RIM + 60, 14); ctx.fillRect(CX - RIM - 30, BOT + 2, 2 * RIM + 60, 14);
+
+    // Upper bulb: walls of niches and brackets, the heap, and how the visitor thinks about it.
+    ctx.strokeStyle = C.dim; ctx.lineWidth = 1.5;
+    for (let y = TOP + 30; y < NECK0 - 40; y += 46){ const w = half(y) - 16; for (const s of [-1, 1]){ ctx.strokeRect(CX + s * w - (s > 0 ? 18 : 0), y, 18, 24); } }
+    ctx.fillStyle = DUST;
+    heap.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, 6.29); ctx.fill(); });
+    if (thought === 'many'){
+      ctx.strokeStyle = C.lamp; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+      funnels(6 * Math.pow(2, Math.min(gens, 5))).forEach(u => {
+        ctx.beginPath(); ctx.moveTo(u.x - u.s, u.y - u.s); ctx.lineTo(u.x, u.y + u.s * .4); ctx.lineTo(u.x + u.s, u.y - u.s); ctx.stroke();
+      });
+      ctx.setLineDash([]);
+    } else {
+      ctx.strokeStyle = C.lamp; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(last.x, last.y, 9, 0, 6.29); ctx.stroke();
+      ctx.fillStyle = C.lamp; ctx.font = '400 24px ' + C.display; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText('最后一粒，还在顶上等着', last.x + 20, last.y - 18);
+    }
+
+    // Lower bulb: one windowless house per life that has passed, packed from the bottom up.
+    ctx.fillStyle = TOMB; ctx.strokeStyle = C.dim; ctx.lineWidth = 1;
+    const settled = anim ? dead - K : dead;
+    for (let i = 0; i < Math.min(settled, slots.length); i++){ const s = slots[i]; ctx.fillRect(s.x - 7, s.y - 12, 14, 12); }
+    if (mine != null && mine < settled){ const s = slots[mine]; ctx.strokeStyle = C.lamp; ctx.lineWidth = 2; ctx.strokeRect(s.x - 9, s.y - 14, 18, 16);
+      ctx.fillStyle = C.lamp; ctx.font = '400 22px ' + C.display; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText('你的姓氏', CX + RIM + 20, s.y - 6);
+      ctx.beginPath(); ctx.moveTo(s.x + 9, s.y - 6); ctx.lineTo(CX + RIM + 14, s.y - 6); ctx.lineWidth = 1; ctx.stroke(); }
+
+    // The neck: the living. While a generation passes, the old ones fall and new ones drop in from above.
+    const u = f * f * (3 - 2 * f);
+    LIVE.forEach((p, i) => {
+      if (anim){
+        const s = slots[Math.min(dead - K + i, slots.length - 1)];
+        SC.figure(ctx, C.dim, p.x + (s.x - p.x) * u, p.y + (s.y - p.y) * u, .7 * (1 - .6 * u), 0);
+        SC.figure(ctx, C.ink, p.x, NECK0 - 20 + (p.y - NECK0 + 20) * u, .7 * (.4 + .6 * u), 0);
+      } else SC.figure(ctx, C.ink, p.x, p.y, .7, 0);
+    });
+
+    ctx.fillStyle = C.dim; ctx.font = '400 26px ' + C.display; ctx.textBaseline = 'middle';
+    ctx.textAlign = 'right'; ctx.fillText('尚未出世者的劳多米亚', CX - RIM - 40, TOP + 120);
+    ctx.fillText('生者的劳多米亚', CX - NECKW - 40, (NECK0 + NECK1) / 2);
+    ctx.fillText('死者的劳多米亚', CX - RIM - 40, BOT - 120);
+  }
+
+  function ui(){
+    document.getElementById('meter').textContent = '过了 ' + gens + ' 代 · 死者城里 ' + dead + ' 间 · 细颈里 ' + K + ' 人 · 上面有多少：不知道';
+    document.getElementById('moral').textContent = gens >= 3 && asked >= 2 ? DONE : MORALS[Math.min(gens, 2)];
+  }
+  function caption(t){ document.getElementById('caption').textContent = t; }
+
+  function gen(){
+    if (anim) return;
+    gens += 1; dead += K;
+    anim = still ? null : { start: clock() };
+    caption('细颈里的 ' + K + ' 个人落下去了，死者的城又挤了一点；上面落下 ' + K + ' 个人补进来。上面看起来跟刚才一样。');
+    ui(); st.redraw();
+  }
+  function visitDead(){
+    if (!dead){ caption('死者的劳多米亚还空着，没有可以去找的解释。'); return; }
+    asked += 1; mine = Math.floor(SC.rng(asked * 31 + 7)() * Math.min(dead, slots.length));
+    caption('在一块墓碑上见到自己的姓氏。找到的是' + REASONS[(asked - 1) % REASONS.length] + '找到多少都无所谓。');
+    ui(); st.redraw();
+  }
+  function visitUnborn(){
+    asked += 1; mine = null;
+    caption('「' + ASKS[(asked - 1) % ASKS.length] + '」空屋顶下只有脚步的回声。');
+    ui(); st.redraw();
+  }
+  function think(){
+    thought = thought === 'many' ? 'end' : 'many';
+    caption(thought === 'many' ? '这样想：他们比所有活过的和死去的加起来还多，石头上每个小孔里都挤着看不见的人，一代比一代多。'
+                               : '那样想：总有一天会落完。最后一个婴儿出生的时候，最后一粒沙也落下去；它这会儿还在沙堆顶上，等着。');
+    st.redraw();
+  }
+  function reset(){ gens = 0; dead = 0; thought = 'many'; anim = null; asked = 0; mine = null; caption('第一代人站在细颈里。'); ui(); st.redraw(); }
+
+  gens = 0; dead = 0; thought = 'many'; anim = null; asked = 0; mine = null;
+  const st = SC.stage(document.getElementById('c'), W, H, draw);
+  caption('第一代人站在细颈里。'); ui();
+  document.getElementById('gen').addEventListener('click', gen);
+  document.getElementById('dead').addEventListener('click', visitDead);
+  document.getElementById('unborn').addEventListener('click', visitUnborn);
+  document.getElementById('think').addEventListener('click', think);
+  document.getElementById('flip').addEventListener('click', () => { caption('沙漏倒不过来。'); });
+  document.getElementById('reset').addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>
