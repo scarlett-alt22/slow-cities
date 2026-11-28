@@ -1,4 +1,6 @@
 // 无头跑 smeraldina.html：桩掉 DOM/canvas，时钟可拨，测试侧注入只读钩子。
+// 11-28 补（手工变异 16 个只抓到 3 个，其中「燕子不画」还是碰巧抓到的）：录调用时多记 fillStyle；「今天的路」只认 moveTo→lineTo→stroke 这一笔；
+// 补读地图（运河、街、河边带路两条分开、屋顶块、路口）、起终点（圆和「从／到」）、燕子、三种虚线、水路用水色，和第一天说明里的上下船次数。
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const shared = fs.readFileSync(process.argv[3], 'utf8');
@@ -13,7 +15,7 @@ function mk(id){ return { id, textContent: '', disabled: false, dataset: {}, att
 function el(id){ return els[id] || (els[id] = mk(id)); }
 const ctx = new Proxy({}, { get(t, k){ if (k in t) return t[k];
   if (k === 'createLinearGradient') return () => ({ addColorStop(){} });
-  return (...a) => { for (const v of a) if (typeof v === 'number' && !isFinite(v)) throw new Error('non-finite arg to ' + String(k)); log.push({ op: String(k), a, stroke: t.strokeStyle, alpha: t.globalAlpha, w: t.lineWidth }); }; },
+  return (...a) => { for (const v of a) if (typeof v === 'number' && !isFinite(v)) throw new Error('non-finite arg to ' + String(k)); log.push({ op: String(k), a, stroke: t.strokeStyle, fill: t.fillStyle, alpha: t.globalAlpha, w: t.lineWidth }); }; },
   set(t, k, v){ t[k] = v; return true; } });
 let NOW = 1000000;
 global.window = { matchMedia: () => ({ matches: !!process.env.REDUCE }), addEventListener(){}, devicePixelRatio: 1 };
@@ -30,7 +32,9 @@ const frame = () => { log = []; T.st.redraw(); return log.slice(); };
 const canvas = el('c'), meter = () => el('meter').textContent, cap = () => el('caption').textContent, moral = () => el('moral').textContent;
 const press = (x, y) => canvas.handlers.pointerdown({ clientX: x / 2, clientY: y / 2 });
 const pressNode = i => press(T.nodes[i].x + 10, T.nodes[i].y - 10);
-const WATER = '#7cc4f0', INK = '--ink';
+const WATER = '#7cc4f0', INK = '--ink', CANAL = '#2c5d85';
+// one stroked stretch: moveTo, lineTo, stroke — the roof blocks (moveTo, lineTo…, fill) never match
+const strokes = f => f.filter((l, i) => l.op === 'lineTo' && f[i - 1] && f[i - 1].op === 'moveTo' && f[i + 1] && f[i + 1].op === 'stroke');
 
 // A walk is legal only if it is a chain from A to B and every stretch is passable the way he goes it.
 function legal(w, A, B){
@@ -60,6 +64,21 @@ pressNode(A); check(T.A == null, '起点再点一次：取消');
 pressNode(A); pressNode(B);
 check(T.B === B && T.walks.length === 1 && legal(T.walks[0], A, B), '再点右下角：第 1 天的路从起点连到终点、每段都走得通');
 check(/第 1 天/.test(cap()) && /1 天，1 条不同的路/.test(meter()) && !el('tomorrow').disabled, '说明和计数：' + cap() + ' | ' + meter());
+{ const sg = T.walks[0].segs, wat = sg.filter(x => x.mode === 'water').length; let turns = 0; sg.forEach((x, i) => { if (i && x.mode !== sg[i - 1].mode) turns++; });
+  check(cap().includes(sg.length + ' 段路，水上 ' + wat + ' 段、街上 ' + (sg.length - wat) + ' 段') && cap().includes(turns ? '上下船 ' + turns + ' 次' : '一次也没换'), '第 1 天的说明跟这条路对得上（上下船 ' + turns + ' 次）'); }
+// the picture of the map and the two places
+{ const f = frame(), st = strokes(f);
+  const canals = st.filter(l => l.stroke === CANAL && l.w === 22), streets = st.filter(l => l.stroke === '--rule' && l.w === 10);
+  check(canals.length === T.edges.filter(e => e.type !== 'street').length && streets.length === T.edges.filter(e => e.type !== 'water').length, '地图：每段河画成运河、每段街画成街（' + canals.length + ' / ' + streets.length + '）');
+  const k = T.edges.findIndex(e => e.type === 'both'), e = T.edges[k], mid = l => [(f[f.indexOf(l) - 1].a[0] + l.a[0]) / 2, (f[f.indexOf(l) - 1].a[1] + l.a[1]) / 2];
+  const near = (l, n) => Math.hypot(f[f.indexOf(l) - 1].a[0] - T.nodes[n].x, f[f.indexOf(l) - 1].a[1] - T.nodes[n].y) < 20;
+  const cw = canals.find(l => near(l, e.a)), sw = streets.find(l => near(l, e.a) && Math.hypot(l.a[0] - (cw ? cw.a[0] : 0), l.a[1] - (cw ? cw.a[1] : 0)) < 60);
+  check(cw && sw && Math.hypot(mid(cw)[0] - mid(sw)[0], mid(cw)[1] - mid(sw)[1]) > 20, '河边带路：河和路并排画在两边，不叠在一起');
+  check(f.filter(l => l.op === 'fill' && l.fill === '#1f2440').length === 4 * 7, '每个街区画了一块屋顶（28 块）');
+  check(f.filter(l => l.op === 'fillRect' && l.a[2] === 18 && l.a[3] === 18).length === 40, '40 个路口都画了');
+  const at = (txt, n) => f.some(l => l.op === 'fillText' && l.a[0] === txt && Math.abs(l.a[1] - T.nodes[n].x) < 1e-6);
+  check(at('从', A) && at('到', B) && f.filter(l => l.op === 'arc' && l.a[2] === 17 && l.fill === '--lamp').length === 2, '起点写「从」、终点写「到」，各一个灯色圆');
+  check(f.filter(l => l.op === 'quadraticCurveTo').length === 6, '天上三只燕子'); }
 
 // Many days: all different, all legal.
 for (let d = 0; d < 11; d++) el('tomorrow').handlers.click();
@@ -72,19 +91,22 @@ check(/12 天，12 条不同的路/.test(meter()) && /一模一样/.test(moral()
 
 // Drawing: today's route bright, old ones faint.
 const today = T.walks[T.walks.length - 1];
+{ at(1000 + T.DUR + 5); const st = strokes(frame()).filter(l => l.alpha === 1 && (l.w === 9 || l.w === 7));
+  const wat = today.segs.filter(x => x.mode === 'water').length;
+  check(st.filter(l => l.stroke === WATER && l.w === 9).length === wat && st.filter(l => l.stroke === INK && l.w === 7).length === today.segs.length - wat, '今天的路：水上那几段是水色、街上那几段是墨色'); at(1000); }
 if (!R){
   at(1000 + 0);   // the clock does not move: today's walk was made "now", nothing drawn yet
-  const f0 = frame().filter(l => l.op === 'lineTo' && l.alpha === 1 && (l.stroke === WATER || l.stroke === INK) && (l.w === 9 || l.w === 7));
+  const f0 = strokes(frame()).filter(l => l.alpha === 1 && (l.stroke === WATER || l.stroke === INK) && (l.w === 9 || l.w === 7));
   at(1000 + T.DUR / 2);
-  const fh = frame().filter(l => l.op === 'lineTo' && l.alpha === 1 && (l.stroke === WATER || l.stroke === INK) && (l.w === 9 || l.w === 7));
+  const fh = strokes(frame()).filter(l => l.alpha === 1 && (l.stroke === WATER || l.stroke === INK) && (l.w === 9 || l.w === 7));
   at(1000 + T.DUR + .1);
-  const ff = frame().filter(l => l.op === 'lineTo' && l.alpha === 1 && (l.stroke === WATER || l.stroke === INK) && (l.w === 9 || l.w === 7));
+  const ff = strokes(frame()).filter(l => l.alpha === 1 && (l.stroke === WATER || l.stroke === INK) && (l.w === 9 || l.w === 7));
   check(fh.length > 0 && fh.length < ff.length && ff.length === today.segs.length, '今天的路一段段画出来：一半时 ' + fh.length + ' 段，画完 ' + ff.length + '/' + today.segs.length + ' 段');
 } else {
-  const ff = frame().filter(l => l.op === 'lineTo' && l.alpha === 1 && (l.stroke === WATER || l.stroke === INK) && (l.w === 9 || l.w === 7));
+  const ff = strokes(frame()).filter(l => l.alpha === 1 && (l.stroke === WATER || l.stroke === INK) && (l.w === 9 || l.w === 7));
   check(ff.length === today.segs.length, '减少动效：今天的路一下全画上 ' + ff.length + '/' + today.segs.length);
 }
-const faint = frame().filter(l => l.op === 'lineTo' && Math.abs(l.alpha - .22) < 1e-9).length;
+const faint = strokes(frame()).filter(l => Math.abs(l.alpha - .22) < 1e-9).length;
 check(faint === T.walks.slice(0, -1).reduce((s, w) => s + w.segs.length, 0), '以前那 11 天的路淡淡地留着：' + faint + ' 段');
 
 // Roofs and drains.
@@ -96,6 +118,7 @@ const rs = T.roofs;
 check(rs[0] === A && rs[rs.length - 1] === B && rs.every((n, i) => !i || (Math.abs(T.nodes[n].c - T.nodes[rs[i - 1]].c) <= 1 && Math.abs(T.nodes[n].r - T.nodes[rs[i - 1]].r) <= 1 && n !== rs[i - 1])), '屋顶那条从起点跳到终点，每步跳到相邻一格：' + rs.length + ' 步');
 check(rs.some((n, i) => i && T.nodes[n].c !== T.nodes[rs[i - 1]].c && T.nodes[n].r !== T.nodes[rs[i - 1]].r), '屋顶那条有斜着跳的');
 const fr = frame();
+check(fr.some(l => l.op === 'setLineDash' && l.a[0].join() === '16,10'), '屋顶那条画成长虚线');
 const roofLines = fr.filter(l => l.stroke === '--lamp' && l.op === 'lineTo' && l.w === 5);
 const roofEnds = fr.filter(l => l.stroke === '--lamp' && (l.op === 'lineTo' || l.op === 'moveTo') && l.w === 5);
 const nearNode = p => Math.min(...T.nodes.map(n => Math.hypot(n.x - (p[0] + 6), n.y - (p[1] + 6))));
@@ -105,6 +128,7 @@ el('under').handlers.click();
 const us = T.unders;
 check(us[0] === A && us[us.length - 1] === B && us.every((n, i) => !i || Math.abs(T.nodes[n].c - T.nodes[us[i - 1]].c) + Math.abs(T.nodes[n].r - T.nodes[us[i - 1]].r) === 1), '下水道那条只横竖走、从起点到终点：' + us.length + ' 步');
 check(/乳酪/.test(cap()) && frame().filter(l => l.stroke === '#a68bd0' && l.op === 'lineTo').length === us.length - 1, '开下水道：说明、画出来');
+check(frame().some(l => l.op === 'setLineDash' && l.a[0].join() === '2,11'), '下水道那条画成点线');
 el('roof').handlers.click(); el('under').handlers.click();
 check(el('roof').attrs['aria-pressed'] === 'false' && !frame().some(l => l.stroke === '--lamp' && l.w === 5 && l.op === 'lineTo'), '再点关掉');
 
@@ -119,6 +143,7 @@ if (!R){
   const dashed = () => frame().filter(l => l.op === 'lineTo' && l.stroke === INK && l.w === 2).length;
   // 41 points → 40 strokes, or 39 if the pen lifts where the swallow re-enters (this moment, 1002.5 s, is such a one)
   check(dashed() >= 39 && dashed() <= 40, '描下的那段画在图上：' + dashed() + ' 段');
+  check(frame().some(l => l.op === 'setLineDash' && l.a[0].join() === '6,8'), '描下的那段是虚线');
   at(t0 + T.FADE + .1); dashed();
   check(T.trace === null && dashed() === 0, '一秒半以后淡没了');
   // Trace at a moment whose last 2 s include the swallow leaving one edge and coming back at the other
