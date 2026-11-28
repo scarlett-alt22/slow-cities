@@ -135,9 +135,12 @@
       const y = y0 + (y1 - y0) * k / 8, bulge = Math.sin(Math.PI * k / 8), j = (r() - .5) * 18;
       left.push([x - w / 2 * bulge + j, y]); right.push([x + w / 2 * bulge + j, y]);
     }
+    // The crack's outline is traced twice, once to clip the city inside it and once to draw its edge:
+    // the current path is not saved with save(), so the swallows drawn in between would replace it.
+    const outline = () => { ctx.beginPath(); ctx.moveTo(left[0][0], left[0][1]);
+      left.forEach(p => ctx.lineTo(p[0], p[1])); right.slice().reverse().forEach(p => ctx.lineTo(p[0], p[1])); ctx.closePath(); };
     ctx.save();
-    ctx.beginPath(); ctx.moveTo(left[0][0], left[0][1]);
-    left.forEach(p => ctx.lineTo(p[0], p[1])); right.slice().reverse().forEach(p => ctx.lineTo(p[0], p[1])); ctx.closePath();
+    outline();
     ctx.save(); ctx.clip();
     // The other city: crystal, transparent as a dragonfly's wing.
     ctx.globalAlpha = .28; ctx.fillStyle = C.ink; ctx.fillRect(x - 80, y0, 160, y1 - y0);
@@ -149,7 +152,7 @@
       ctx.beginPath(); ctx.ellipse(sx - 10, sy, 12, 4, -.3, 0, 6.29); ctx.ellipse(sx + 10, sy, 12, 4, .3, 0, 6.29); ctx.stroke();
     }
     ctx.restore();
-    ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.stroke();
+    outline(); ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.stroke();
     ctx.restore();
   }
 

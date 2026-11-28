@@ -5,6 +5,7 @@
 // ③ 缝一眨眼就合上（正常动效不到 1 秒），合上的地方留一张蜘蛛网
 // ④ 计数对得上画面：看见几次就记几次；开在你不在的那段，记进「别处」
 // ⑤ 专门去找：高兴照样传（还是有两个人同时亮着），墙一次也不开；计数写下有几回没开
+// ② 还有：缝有自己的轮廓（第一版轮廓描成了最后一只燕子，测试没读，截图看出来的）
 // ⑥ 沿墙走：位置条往前挪，走到头按钮按不动、不再往前；减少动效时街上的人不走
 // 跑法：node tests/marozia_test.js        减少动效：REDUCE=1 node tests/marozia_test.js
 // 变异：node tests/canvas-spy-mutate.js -- node tests/marozia_test.js
@@ -20,6 +21,7 @@ const page = loadPage(path.join(__dirname, '..', 'cities', 'marozia.html'), {
   viewport: { width: W, height: 1000 },
   expose: { 'const st = SC.stage(canvas, W, H, draw);': '{ redraw: () => st.redraw() }' },
   mutations: [
+    ['outline(); ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.stroke();', 'ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.stroke();'], // 0 缝的轮廓描成了最后一只燕子（11-29 截图里抓到的真毛病）
     ['if (best < RANGE) pend.push', 'pend.push'],                                                        // 1 没人接住也开缝（离得再远也算）
     ['if (hunt){', 'if (false){'],                                                                         // 2 专门找也照样开
     ['if (now - c.t < OPEN) return true;', 'if (now - c.t < OPEN * 4) return true;'],                     // 3 缝开很久
@@ -44,6 +46,7 @@ function look(){
   return {
     wall: where(ops, { op: 'fillRect', style: RULE, test: o => o.box.w >= W - 1 && Math.abs(o.box.y - WALL_TOP) < 1 && Math.abs(o.box.h - (WALL_BOT - WALL_TOP)) < 1 }).length,
     cracks: where(ops, { op: 'fillRect', style: INK, test: o => o.box.h > 200 && o.box.w < 200 && o.box.cy > WALL_TOP && o.box.cy < WALL_BOT }).map(o => o.box.cx),
+    edges: where(ops, { op: 'stroke', style: INK, test: o => o.box && o.box.h > 250 && o.box.w < 200 && o.box.cy > WALL_TOP && o.box.cy < WALL_BOT }).map(o => o.box.cx),
     lit: heads(LAMP), dark: heads(INK),
     webs: where(ops, { op: 'stroke', style: DIM, test: o => o.box && Math.abs(o.box.w - 68) < 3 && Math.abs(o.box.cy - (WALL_TOP + 70)) < 3 }).map(o => o.box.cx),
     view: (where(ops, { op: 'strokeRect', style: CHALK, test: o => Math.abs(o.box.cy - BAR) < 2 })[0] || { box: { x: NaN } }).box.x,
@@ -59,7 +62,7 @@ check(v.wall === 1 && v.cracks.length === 0 && v.dark.length >= 4, '① 一整�
 check(/还没看见/.test(page.text('meter')) && page.el('back').disabled && !page.el('fwd').disabled, '① 计数写「还没看见」；在墙这一头，「往回走」按不动');
 
 // ② ③ ④ 等着看 60 秒
-const episodes = []; let open = null, pairOk = true, pairMsg = '';
+const episodes = []; let open = null, pairOk = true, pairMsg = '', edgeOk = true;
 for (let k = 0; k < 240; k++){
   v = tick();
   if (v.cracks.length){
@@ -70,6 +73,7 @@ for (let k = 0; k < 240; k++){
     const near = v.lit.filter(h => Math.abs(h - x) < 330).sort((a, b) => a - b);
     const between = near.length >= 2 && Math.abs((near[0] + near[near.length - 1]) / 2 - x) < 45;
     if (!between && pairOk){ pairOk = false; pairMsg = '缝在 ' + Math.round(x) + '，亮着的人 ' + JSON.stringify(v.lit.map(Math.round)); }
+    if (!v.edges.some(e => Math.abs(e - x) < 40)) edgeOk = false;
   } else if (open){
     open.webAfter = v.webs.some(w => Math.abs(w - open.x) < 30);
     episodes.push(open); open = null;
@@ -78,6 +82,7 @@ for (let k = 0; k < 240; k++){
 const inView = episodes.filter(e => e.x >= 0 && e.x <= W);
 check(inView.length >= 1, '② 等了 60 秒，墙上开过缝（看见 ' + inView.length + ' 次）');
 check(pairOk, '② 每次开缝，缝两边都有亮起来的人、缝在他们中间' + (pairMsg ? '：' + pairMsg : ''));
+check(edgeOk, '② 每次开缝，缝有一圈跟缝一样高的轮廓（画的是缝本身，不是别的东西）');
 check(episodes.every(e => e.frames * TICK / 1000 <= OPEN + TICK / 1000), '③ 缝一眨眼就合上（最长 ' + Math.max(...episodes.map(e => e.frames)) * TICK / 1000 + ' 秒，上限 ' + OPEN + '）');
 check(episodes.length > 0 && episodes.every(e => e.webAfter), '③ 合上的地方都留了一张蜘蛛网');
 check(meterNum(/裂开过 (\d+) 次/) === inView.length, '④ 计数「看见」' + meterNum(/裂开过 (\d+) 次/) + ' 次，画面上开过 ' + inView.length + ' 次');
