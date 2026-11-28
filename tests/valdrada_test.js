@@ -2,7 +2,8 @@
 // 规则由测试自己写死（水线 540，四层街 470/380/290/200），不借页面的 mirrorY/LEVELS 作证。
 // 检查：①拖岸上那个、拖水里那个都能动，另一个跟着 ②两双脚永远隔着 ≥140（岸壁和它的倒影），岸上的脚不下水、水里的不上岸
 // ③水里那座是整幅上下翻（translate(0,1080)+scale(1,-1)），不左右翻，人画两次在同一个 x
-// ④没有计数、没有「回到……」按钮 ⑤按钮、方向键、点空处
+// ③b 读画面：岸壁、两边房子一样多、水面的纱半透明、水线压在最上 ③c 抓头拖不跳层、meter 街数
+// ④没有计数、没有「回到……」按钮 ⑤按钮、方向键、点空处、左右边界
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const shared = fs.readFileSync(process.argv[3], 'utf8');
@@ -19,7 +20,7 @@ function el(id){ return els[id] || (els[id] = { id, textContent: '', disabled: f
 let calls = [];
 const ctx = new Proxy({}, { get(t, k){ if (k in t) return t[k]; if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => ({ addColorStop(){} });
   return (...a) => { for (const v of a) if (typeof v === 'number' && !isFinite(v)) throw new Error('non-finite arg to ' + String(k)); calls.push([String(k), a]); }; },
-  set(t, k, v){ t[k] = v; return true; } });
+  set(t, k, v){ t[k] = v; calls.push(['=' + String(k), [v]]); return true; } });
 global.window = { matchMedia: () => ({ matches: process.env.REDUCE === '1' }), addEventListener(){}, devicePixelRatio: 1 };
 global.document = { getElementById: el, documentElement: {}, fonts: null };
 global.getComputedStyle = () => ({ getPropertyValue: () => '#fff' });
@@ -78,6 +79,30 @@ check(calls.filter(c => c[0] === 'scale' && c[1][0] < 0).length === 0, '没有�
 check(figs.length >= 2 && figs.filter(f => f[0] === T.man.x && f[1] === shoreFeet()).length === 2 && figs.length === 2, '人画了两次，同一个 x、同一个脚高（翻转交给变换）: ' + JSON.stringify(figs));
 const clipBefore = calls.slice(0, tr).some(c => c[0] === 'clip');
 check(clipBefore, '倒影只画在水线以下（先 clip）');
+check(T.man.l === 3 && /最高的那层街/.test(el('meter').textContent), '「走上高处」一下到最高那层: l=' + T.man.l);
+
+// ③b read the picture, not just the transform: the quay wall, the houses on both sides, the veil, the waterline
+const rs = calls.findIndex((c, i) => i > tr && c[0] === 'restore');
+const shoreCalls = calls.slice(0, tr), waterCalls = calls.slice(tr, rs), after = calls.slice(rs);
+const isRect = (c, a) => c[1].length === 4 && a.every((v, i) => c[1][i] === v);
+check(shoreCalls.some(c => c[0] === 'fillRect' && isRect(c, [0, 470, 1600, 70])), '岸上画了岸壁：从岸沿 470 一直到水线 540 的整条墙');
+const houses = cs => cs.filter(c => c[0] === 'strokeRect').length;
+check(houses(shoreCalls) >= 20 && houses(waterCalls) === houses(shoreCalls), '岸上的房子都画了，水里一座不少: ' + houses(shoreCalls) + '/' + houses(waterCalls));
+// the veil over the water must stay see-through, or the other Valdrada is painted over
+let alpha = 1, veil = null;
+for (const c of after){ if (c[0] === '=globalAlpha') alpha = c[1][0]; if (c[0] === 'fillRect' && isRect(c, [0, 540, 1600, 460])){ veil = alpha; break; } }
+check(veil !== null && veil > 0 && veil <= .6, '水面那层纱是半透明的，倒影透得出来: alpha=' + veil);
+const wlIdx = after.findIndex((c, i) => c[0] === 'moveTo' && c[1][0] === 0 && c[1][1] === 540 && after[i + 1] && after[i + 1][0] === 'lineTo' && after[i + 1][1][0] === 1600 && after[i + 1][1][1] === 540);
+check(wlIdx >= 0 && after.slice(wlIdx).some(c => c[0] === 'stroke'), '最后在倒影和纱之上画了水线');
+
+// ③c grabbing the head must not make him jump a street (the grab offset is kept)
+handlers['down:click'](); handlers['c:keydown']({ key: 'ArrowUp' });
+const l1 = T.man.l, hx = T.man.x;
+down(hx, shoreFeet() - 100); move(hx, shoreFeet() - 100); up();
+check(T.man.l === l1, '抓岸上那个的头、原地不动，他不跳层: ' + l1 + '→' + T.man.l);
+down(hx, waterFeet() + 100); move(hx, waterFeet() + 100); up();
+check(T.man.l === l1, '抓水里那个的头、原地不动，他不跳层: ' + l1 + '→' + T.man.l);
+check(el('meter').textContent.includes('：' + l1 + ' 层街'), 'meter 里两双脚之间的街数＝他所在的层号: ' + el('meter').textContent);
 
 // ④ no counter that never moves, no "回到……"
 check(!/回到/.test(html) && !/ 0 /.test(el('meter').textContent), '没有「回到……」，计数行里没有恒 0');
@@ -95,6 +120,8 @@ down(100, 100); move(1400, 900); up();
 check(JSON.stringify(T.man) === before, '点空处拖不动任何人');
 for (let i = 0; i < 40; i++) handlers['c:keydown']({ key: 'ArrowLeft' });
 check(T.man.x === 90, '不出左边界: ' + T.man.x);
+for (let i = 0; i < 40; i++) handlers['c:keydown']({ key: 'ArrowRight' });
+check(T.man.x === 1510, '不出右边界: ' + T.man.x);
 
 console.log(fail ? '失败 ' + fail : '全过');
 process.exit(fail ? 1 : 0);
