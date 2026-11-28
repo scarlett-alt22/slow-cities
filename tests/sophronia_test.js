@@ -1,4 +1,7 @@
 // 无头跑 sophronia.html：桩掉 DOM/canvas，记录每次绘图调用，时钟可拨。测试侧注入只读钩子。
+// 11-28 补（手工变异 15 个一个都没抓到：录了调用，只数了石头和尖叫）：拖车、各回各的空地、车上缩小、卸货一路飞回来、
+// 小地图（车队、「这里」、别处是暗的小摩天轮）、空地的名字和虚线框、拿在手上的房子、摩天轮转木马动、车队走到哪说到哪，
+// 和减少动效时定时器照样重画（原来 matchMedia 写死 false，减少动效从没跑过）。
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const shared = fs.readFileSync(process.argv[3], 'utf8');
@@ -17,12 +20,14 @@ const ctx = new Proxy({}, { get(t, k){ if (k in t) return t[k];
   return (...a) => { for (const v of a) if (typeof v === 'number' && !isFinite(v)) throw new Error('non-finite arg to ' + String(k)); log.push(String(k) + '(' + a.map(v => typeof v === 'number' ? v.toFixed(2) : String(v)).join(',') + ')|' + t.strokeStyle + '|' + t.fillStyle); }; },
   set(t, k, v){ t[k] = v; return true; } });
 let NOW = 1000000;
-global.window = { matchMedia: () => ({ matches: false }), addEventListener(){}, devicePixelRatio: 1 };
+const REDUCE = process.env.REDUCE === '1';
+global.window = { matchMedia: () => ({ matches: REDUCE }), addEventListener(){}, devicePixelRatio: 1 };
 global.document = { getElementById: el, documentElement: {}, fonts: null, createElement: () => mk(null), querySelectorAll: () => [] };
 global.getComputedStyle = () => ({ getPropertyValue: n => n });
 global.performance = { now: () => NOW };
 global.requestAnimationFrame = () => {};
-global.setTimeout = () => 1; global.clearTimeout = () => {}; global.setInterval = () => 1;
+let IV = null;
+global.setTimeout = () => 1; global.clearTimeout = () => {}; global.setInterval = f => { IV = f; return 1; };
 eval(shared); global.SC = window.SC;
 eval(src);
 const T = global.__T;
@@ -36,6 +41,18 @@ const meter = () => el('meter').textContent;
 
 at(1000);
 check(T.phase === 'here' && T.loaded() === 0 && /装上车 0 \/ 6/.test(meter()) && stonesDrawn(frame()) === 6, '开头：石头六座都在空地上、画出来 6 座: ' + meter());
+const has = (L, re) => L.some(l => re.test(l));
+const n2 = v => v.toFixed(2).replace('.', '\\.');
+{ const f = frame();
+  check(T.STONE.every((p, i) => has(f, new RegExp('^translate\\(' + n2(T.lotX(i) + 55) + ',' + n2(T.GROUND) + '\\)'))), '六座房子各站在自己那块空地上');
+  check(T.STONE.every((p, i) => has(f, new RegExp('^fillText\\(' + p.name + ',' + n2(T.lotX(i) + 55) + ','))) && T.STONE.every((p, i) => has(f, new RegExp('^strokeRect\\(' + n2(T.lotX(i)) + ',790\\.00,110\\.00,30\\.00\\)'))), '每块空地下写着名字、画着虚线框');
+  check(T.STONE.every((p, i) => has(f, new RegExp('^strokeRect\\(' + n2(T.slotX(i) - 55) + ',888\\.00,110\\.00,12\\.00\\)'))), '路边停着六节拖车');
+  check(has(f, /^fillText\(这里,1320\.00,/) && has(f, /^fillRect\(1308\.00,191\.00,24\.00,10\.00\)\|.*\|--lamp$/), '小地图：「这里」，车队停在这里');
+  check(T.CORNER.every((c, k) => has(f, new RegExp('^arc\\(' + n2(c[0]) + ',' + n2(c[1]) + ',10\\.00.*\\|' + (k ? '--dim' : '--chalk') + '\\|'))), '小地图：这里的小摩天轮亮、另外三处暗');
+  const spokes = L => L.filter((l, i) => i && /^lineTo/.test(l) && /^moveTo\(170\.00,600\.00\)/.test(L[i - 1])).join();
+  const horses = L => L.filter(l => /^fillRect\((496|524|553|581|610)\.\d\d,/.test(l) && /--lamp$/.test(l)).join();
+  at(1000.5); const fB = frame(); at(1000);
+  check(spokes(f) !== spokes(fB) && horses(f) !== horses(fB), '摩天轮在转、木马在上下'); }
 
 // Stone lifts with the hand and goes onto a truck when dropped on the road.
 const p2 = T.STONE[2], gx = T.lotX(2) + 55, gy = T.GROUND - 100;
@@ -43,10 +60,12 @@ ptr('pointerdown', gx, gy);
 check(T.carry === 2 && T.pieces[2].where === 'hand', '按住宫殿：它离开空地、跟着手（carry=2）');
 ptr('pointermove', 300, 500);
 check(T.pieces[2].hx === 300 && Math.abs(T.pieces[2].hy - (500 + 100)) < 1e-9, '拖动时房子跟着手走（抓的那一点不跳）');
+check(has(frame(), /^translate\(300\.00,600\.00\)/), '画面：拿在手上的那座画在手的位置');
 ptr('pointerup', 300, 500);
 check(T.pieces[2].where === 'lot' && T.loaded() === 0, '放在半空（没到路上）：放回原来的空地，不算装车');
 ptr('pointerdown', gx, gy); ptr('pointermove', 1100, 880); ptr('pointerup', 1100, 880);
 check(T.pieces[2].where === 'truck' && T.loaded() === 1 && T.pieces[2].slot === 2, '拖到路上放手：装上离得最近的拖车 (slot ' + T.pieces[2].slot + ')');
+{ const f = frame(), i = f.findIndex(l => new RegExp('^translate\\(' + n2(T.slotX(2)) + ',888\\.00\\)').test(l)); check(i >= 0 && /^rotate\(/.test(f[i + 1]) && /^scale\(0\.45,0\.45\)/.test(f[i + 2]), '画面：装上车的宫殿缩小了放在拖车上（紧跟着 translate 的那一个 scale）'); }
 
 // The fair can't be picked up: pressing it only makes it wobble, and dragging it to the road loads nothing.
 const before = T.loaded();
@@ -75,6 +94,14 @@ const tLeave = 3001.3;
 at(tLeave + T.LEAVE + .01); T.step();
 check(T.phase === 'away' && stonesDrawn(frame()) === 0, '车队走了：画面上一座石头房子都没有');
 const tAway = tLeave + T.LEAVE + .01;
+{ const LEG = 21, STAY = 70; check(T.AWAY === 4 * LEG + 3 * STAY, '一年在外 ' + T.AWAY + ' 天＝四段路三次停留');
+  const want = d => d < LEG ? /往第 1 块别的空地去/ : d < LEG + STAY ? /停在第 1 块别的空地上/ : d < 2 * LEG + STAY ? /往第 2 块别的空地去/ : d >= 3 * LEG + 3 * STAY ? /回来的路上/ : null;
+  let ok = true, bad = [];
+  for (const d of [10, 50, 100, 280]){ at(tAway + (d + .5) / T.RATE); T.step(); const c = el('caption').textContent; if (!want(d).test(c)){ ok = false; bad.push(d + ':' + c); } }
+  check(ok, '车队走到哪、说明就说到哪（第 10/50/100/280 天）' + bad.join(' '));
+  at(tAway + 50.5 / T.RATE); T.step(); const p = T.caravanAt();
+  check(has(frame(), new RegExp('^fillRect\\(' + n2(p[0] - 12) + ',' + n2(p[1] - 5) + ',24\\.00,10\\.00\\)')) && p[0] !== T.CORNER[0][0], '小地图：车队画在它此刻所在的地方');
+  if (REDUCE){ at(tAway + 60.5 / T.RATE); log = []; IV(); check(log.length > 0, '减少动效：定时器每次都重画，日子照样往下走'); } }
 at(tAway + 10); T.step(); frame();
 check(T.day() === 120 && new RegExp('走了 120 天 · 还有 ' + (T.AWAY - 120) + ' 天回来').test(meter()), '日子往下数: ' + meter());
 ptr('pointerdown', T.lotX(0) + 55, T.GROUND - 50);
@@ -92,6 +119,8 @@ check([1, 2, 3].every(k => seen.has(k)), '小地图：车队在另外三块空�
 // It comes back, unloads onto the lots, and the year turns.
 at(tAway + T.AWAY / T.RATE + .01); T.step();
 check(T.phase === 'back', '日子数完：车队开回来');
+{ const tb = tAway + T.AWAY / T.RATE + .01; at(tb + T.BACK * .8); const f = frame();
+  check(has(f, /^translate\(\d+\.\d\d,854\.00\)/) && has(f, /^scale\(0\.7\d,0\.7\d\)/), '卸货：房子从车上一路飞回空地（半路上、半大）'); }
 at(tAway + T.AWAY / T.RATE + .01 + T.BACK + .01); T.step(); const fb = frame();
 check(T.phase === 'here' && T.year === 2 && T.loaded() === 0 && stonesDrawn(fb) === 6 && T.pieces.every(p => p.where === 'lot'), '卸完货：六座回到空地，第 2 年: ' + meter());
 check(Math.abs(T.carU(NOW / 1000) - T.CREST) < 1e-6 && !el('load').disabled, '过山车从最高处冲下去（不是瞬移），按钮又能按了');
