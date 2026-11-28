@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>马洛奇亚 · Slow Cities</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap">
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">隐蔽的城市 · 之三 · 读到的第 52 座</p>
+    <h1>马洛奇亚</h1>
+    <p class="lede">有人问占卜的女人马洛奇亚的命运，她说看见两座城，一座老鼠的，一座燕子的。大家解作：现在是老鼠的年代，新纪元一来，人人都会像燕子。过了些年再去，人人都说预言早应验了。街上的翅膀，其实是互相提防的雨伞。</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c" tabindex="0" role="img" aria-label="一道很长的厚城墙，墙后露出灰色的石屋顶；墙前的街上，人都打着伞低头走，有几个扇着外衣、刚离开地面一点，脚边有老鼠窜过。偶尔墙上裂开一道缝，里面是一座透明的城，一眨眼就合上。方向键可以沿着墙走"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="controls">
+    <button id="back" type="button">往回走</button>
+    <button class="primary" id="fwd" type="button">沿着城墙往前走</button>
+    <button id="hunt" type="button" aria-pressed="false">专门去找那道缝</button>
+    <span class="meter" id="meter"></span>
+  </div>
+
+  <p class="moral" id="moral" aria-live="polite"></p>
+
+  <p class="read-on">读于 2026-11-12 15:34（心跳夜读），2026-11-29 做的，动手前回原章核过。墙是很长的一道，一屏只看得见三分之一，可以沿着它走。街上的人隔一阵会有一个只为高兴做了点什么（转一下伞），他亮起来；要是旁边有人，高兴就传过去，那人也亮起来，这时两人中间的墙上才会开一道缝，里面是另一座城，透明的，像蜻蜓的翅膀，不到一秒就合上，合上的地方留一张蜘蛛网——书里说要记得旧的马洛奇亚随时会回来。没人接住的高兴不开缝。缝开在哪、什么时候开，页面自己也定不了，所以常常开在你不在的那一段，计数里会告诉你别处开过几次。按「专门去找那道缝」，高兴照样会传，墙却一次也不开：书里说这事必须是碰巧的，不能看得太重，不能想着自己正在做一件决定性的事。书里还说也许关键是知道按什么顺序和节奏说什么、做什么，这个我没画；燕子在夏空里互相呼唤、扫掉空中的蚊虫，也没画。文字是我的转述，不是原文。</p>
+
+  <nav class="cities"><a href="./laudomia.html">← 劳多米亚</a><a href="../index.html">全部城市</a></nav>
+</div>
+
+<script src="../shared.js"></script>
+<script>
+(function(){
+  const W = 1600, H = 1000, WORLD = 4800;
+  const WALL_TOP = 250, WALL_BOT = 600, STREET = 860, BAR = 46;
+  const C = SC.palette();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clock = () => performance.now() / 1000;
+  const OPEN = reduce ? 1.6 : 0.9;      // how long a crack stays open
+  const PASS = 0.5;                     // how long one person's pleasure takes to reach the next
+  const GLOW = PASS + OPEN + .2;        // how long someone stays lit: the first one has to outlast the crack their pleasure opened
+  const RANGE = 300;                    // the nearest other person has to be this close to catch it
+  const GAP = [2.5, 5];                 // seconds between chance happenings, somewhere along the wall
+  const STEP = 400;                     // one press of a walk button
+
+  // Built once from fixed seeds, so the street is the same every time.
+  const r0 = SC.rng(1215);
+  const people = Array.from({ length: 16 }, (_, i) => ({
+    base: (i + .5) * WORLD / 16 + (r0() - .5) * 160, v: (r0() < .5 ? -1 : 1) * (8 + r0() * 14), bat: i % 5 === 2
+  }));
+  const rats = Array.from({ length: 7 }, () => ({ base: r0() * WORLD, v: 150 + r0() * 120 }));
+  const roofs = [];
+  for (let x = 0; x < WORLD; ){ const w = 110 + r0() * 120; roofs.push({ x, w, h: 50 + r0() * 70 }); x += w + 10 + r0() * 40; }
+
+  const wrap = x => ((x % WORLD) + WORLD) % WORLD;
+  const posT = t => reduce ? 0 : t;                     // with reduced motion nobody walks
+  const xOf = (i, t) => wrap(people[i].base + people[i].v * posT(t));
+  const dist = (a, b) => { const d = Math.abs(a - b); return Math.min(d, WORLD - d); };
+  const mid = (a, b) => Math.abs(a - b) > WORLD / 2 ? wrap((a + b + WORLD) / 2) : (a + b) / 2;
+
+  let walk, hunt, seen, missed, hushed, glows, pend, cracks, webs, ev, nextAt;
+
+  function reset(){
+    walk = 0; hunt = false; seen = 0; missed = 0; hushed = 0;
+    glows = []; pend = []; cracks = []; webs = [];
+    ev = SC.rng(77); nextAt = clock() + 2;
+  }
+  const inView = x => x >= walk && x <= walk + W;
+
+  // Somebody does a thing only for the pleasure of it.
+  function happen(t){
+    const i = Math.floor(ev() * people.length), xi = xOf(i, t);
+    glows.push({ i, t });
+    let q = -1, best = Infinity;
+    people.forEach((p, k) => { if (k !== i){ const d = dist(xi, xOf(k, t)); if (d < best){ best = d; q = k; } } });
+    if (best < RANGE) pend.push({ at: t + PASS, a: i, b: q });
+    else if (inView(xi)) caption('有人只为高兴转了一下伞。旁边没有人，没人接住，墙还是墙。');
+  }
+  // ...and the pleasure becomes someone else's.
+  function catchIt(p){
+    glows.push({ i: p.b, t: p.at });
+    const x = mid(xOf(p.a, p.at), xOf(p.b, p.at)), here = inView(x);
+    if (hunt){
+      hushed++;
+      if (here) caption('你盯着墙找。有人的高兴传给了旁边那个人，墙一动不动。');
+    } else {
+      cracks.push({ x, t: p.at });
+      if (here){ seen++; caption('有人只为高兴转了一下伞，旁边那人也笑了。墙上开了一道缝，里面是另一座城，一眨眼就合上了。'); }
+      else missed++;
+    }
+    ui();
+  }
+
+  function step(now){
+    for (;;){
+      const p = pend.reduce((a, b) => !a || b.at < a.at ? b : a, null);
+      const tNext = Math.min(nextAt, p ? p.at : Infinity);
+      if (tNext > now) break;
+      if (p && p.at <= nextAt){ pend.splice(pend.indexOf(p), 1); catchIt(p); }
+      else { happen(nextAt); nextAt += GAP[0] + ev() * (GAP[1] - GAP[0]); }
+    }
+    glows = glows.filter(g => now - g.t < GLOW);
+    cracks = cracks.filter(c => {
+      if (now - c.t < OPEN) return true;
+      webs.push(c.x); if (webs.length > 24) webs.shift();     // the old Marozia comes back over the spot
+      return false;
+    });
+  }
+  const lit = (i, now) => glows.some(g => g.i === i && now >= g.t && now - g.t < GLOW);
+
+  // ---- drawing ----
+  function web(ctx, x){
+    ctx.save(); ctx.strokeStyle = C.dim; ctx.lineWidth = 1; ctx.globalAlpha = .7;
+    const cx = x, cy = WALL_TOP + 70;
+    ctx.beginPath();
+    for (let k = 0; k < 8; k++){ const a = k * Math.PI / 4; ctx.moveTo(cx, cy); ctx.lineTo(cx + 34 * Math.cos(a), cy + 34 * Math.sin(a)); }
+    for (const r of [12, 22, 32]){ ctx.moveTo(cx + r, cy); ctx.arc(cx, cy, r, 0, 6.29); }
+    ctx.stroke(); ctx.restore();
+  }
+
+  function crack(ctx, c, now){
+    const age = (now - c.t) / OPEN, w = reduce ? 150 : 150 * Math.sin(Math.PI * Math.min(1, age));
+    if (w < 2) return;
+    const x = c.x, y0 = WALL_TOP + 20, y1 = WALL_BOT - 20, r = SC.rng(Math.round(x));
+    const left = [], right = [];
+    for (let k = 0; k <= 8; k++){
+      const y = y0 + (y1 - y0) * k / 8, bulge = Math.sin(Math.PI * k / 8), j = (r() - .5) * 18;
+      left.push([x - w / 2 * bulge + j, y]); right.push([x + w / 2 * bulge + j, y]);
+    }
+    ctx.save();
+    ctx.beginPath(); ctx.moveTo(left[0][0], left[0][1]);
+    left.forEach(p => ctx.lineTo(p[0], p[1])); right.slice().reverse().forEach(p => ctx.lineTo(p[0], p[1])); ctx.closePath();
+    ctx.save(); ctx.clip();
+    // The other city: crystal, transparent as a dragonfly's wing.
+    ctx.globalAlpha = .28; ctx.fillStyle = C.ink; ctx.fillRect(x - 80, y0, 160, y1 - y0);
+    ctx.globalAlpha = 1; ctx.strokeStyle = C.ink; ctx.lineWidth = 1.4;
+    for (let k = -3; k <= 3; k++){ const tx = x + k * 22, th = 120 + ((k * 37 + 200) % 140); ctx.strokeRect(tx - 7, y1 - th, 14, th); }
+    ctx.strokeStyle = C.lamp; ctx.lineWidth = 1.5;
+    for (let k = 0; k < 3; k++){
+      const sx = x - 40 + k * 40 + (reduce ? 0 : 20 * Math.sin(now * 3 + k)), sy = y0 + 60 + k * 45;
+      ctx.beginPath(); ctx.ellipse(sx - 10, sy, 12, 4, -.3, 0, 6.29); ctx.ellipse(sx + 10, sy, 12, 4, .3, 0, 6.29); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+  }
+
+  function person(ctx, i, now){
+    const p = people[i], x = xOf(i, now), on = lit(i, now), col = on ? C.lamp : C.ink;
+    const hop = p.bat && !reduce ? -5 * Math.abs(Math.sin(now * 5 + i)) : 0, y = STREET + hop;
+    SC.figure(ctx, col, x, y, 1.3, 0);
+    ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+    if (p.bat){
+      // A coat flapped like a bat's wings: barely off the ground.
+      const f = reduce ? .5 : .5 + .5 * Math.sin(now * 10 + i);
+      ctx.beginPath();
+      ctx.moveTo(x, y - 40); ctx.lineTo(x - 30, y - 30 + 14 * f); ctx.lineTo(x - 8, y - 14);
+      ctx.moveTo(x, y - 40); ctx.lineTo(x + 30, y - 30 + 14 * f); ctx.lineTo(x + 8, y - 14);
+      ctx.stroke();
+    } else {
+      // The wings are umbrellas; under them, heavy eyelids.
+      const tilt = on && !reduce ? .4 * Math.sin((now - glows.filter(g => g.i === i).slice(-1)[0].t) * 8) : 0;
+      ctx.translate(x, y - 66); ctx.rotate(tilt);
+      ctx.strokeStyle = on ? C.lamp : C.dim;
+      ctx.beginPath(); ctx.arc(0, 0, 34, Math.PI, 2 * Math.PI); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 22); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function draw(ctx){
+    const now = clock();
+    step(now);
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.sky); g.addColorStop(1, C.skyHi);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    ctx.save(); ctx.translate(-walk, 0);
+    // Lead-grey stone roofs over the top of the wall.
+    ctx.fillStyle = C.dim; ctx.globalAlpha = .45;
+    for (const r of roofs){ if (r.x + r.w < walk || r.x > walk + W) continue;
+      ctx.beginPath(); ctx.moveTo(r.x, WALL_TOP); ctx.lineTo(r.x + r.w * .5, WALL_TOP - r.h); ctx.lineTo(r.x + r.w, WALL_TOP); ctx.closePath(); ctx.fill(); }
+    ctx.globalAlpha = 1;
+    // The wall.
+    ctx.fillStyle = C.rule; ctx.fillRect(walk, WALL_TOP, W, WALL_BOT - WALL_TOP);
+    ctx.strokeStyle = C.dim; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let row = 0, y = WALL_TOP; y < WALL_BOT; row++, y += 50){
+      ctx.moveTo(walk, y); ctx.lineTo(walk + W, y);
+      const off = row % 2 ? 60 : 0;
+      for (let x = Math.floor((walk - off) / 120) * 120 + off; x < walk + W; x += 120){ ctx.moveTo(x, y); ctx.lineTo(x, Math.min(WALL_BOT, y + 50)); }
+    }
+    ctx.stroke();
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 3; ctx.strokeRect(walk - 4, WALL_TOP, W + 8, WALL_BOT - WALL_TOP);
+    for (const x of webs) if (inView(x)) web(ctx, x);
+    for (const c of cracks) if (c.x > walk - 100 && c.x < walk + W + 100) crack(ctx, c, now);
+    // The street, the people, the rats.
+    ctx.strokeStyle = C.chalk; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(walk, STREET); ctx.lineTo(walk + W, STREET); ctx.stroke();
+    people.forEach((p, i) => { const x = xOf(i, now); if (x > walk - 60 && x < walk + W + 60) person(ctx, i, now); });
+    ctx.fillStyle = C.ink;
+    for (const r of rats){ const x = wrap(r.base + r.v * posT(now)); if (!inView(x)) continue;
+      ctx.beginPath(); ctx.ellipse(x, STREET + 30, 17, 8, 0, 0, 6.29); ctx.fill(); ctx.beginPath(); ctx.arc(x + 15, STREET + 26, 6, 0, 6.29); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x - 16, STREET + 32); ctx.quadraticCurveTo(x - 32, STREET + 40, x - 40, STREET + 28); ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5; ctx.stroke(); }
+    ctx.restore();
+
+    // Where you are along the wall, and the cobwebs left where it opened.
+    const sx = W / WORLD;
+    ctx.strokeStyle = C.dim; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, BAR); ctx.lineTo(W, BAR); ctx.stroke();
+    ctx.fillStyle = C.dim; for (const x of webs){ ctx.beginPath(); ctx.arc(x * sx, BAR, 4, 0, 6.29); ctx.fill(); }
+    ctx.strokeStyle = C.chalk; ctx.strokeRect(walk * sx, BAR - 12, W * sx, 24);
+  }
+
+  function caption(t){ document.getElementById('caption').textContent = t; }
+  function ui(){
+    document.getElementById('meter').textContent =
+      (seen ? '你看见墙裂开过 ' + seen + ' 次' : '你还没看见墙裂开') +
+      (missed ? ' · 别处裂开过 ' + missed + ' 次，你不在那儿' : '') +
+      (hushed ? ' · 你专门找的时候，有 ' + hushed + ' 回高兴传了过去，墙没开' : '');
+    document.getElementById('moral').textContent = hunt
+      ? '专门去找的时候，它不来。这件事得是碰巧的，不能看得太重，不能想着自己正在做一件决定性的事。'
+      : seen ? '占卜的女人没说错。两座城都在随着时间变，它们之间的关系不变：燕子的那座一直在等着从老鼠的那座里脱身。'
+      : '燕子的那座不在别处，就在这道墙里面。只是你没法叫它出来。';
+    const b = document.getElementById('hunt');
+    b.textContent = hunt ? '不找了' : '专门去找那道缝';
+    b.setAttribute('aria-pressed', String(hunt));
+    document.getElementById('back').disabled = walk <= 0;
+    document.getElementById('fwd').disabled = walk >= WORLD - W;
+  }
+  function go(d){
+    walk = Math.max(0, Math.min(WORLD - W, walk + d));
+    caption(walk >= WORLD - W ? '走到墙的这一头了。' : walk <= 0 ? '回到墙的那一头。' : '你沿着墙走。');
+    ui(); st.redraw();
+  }
+
+  reset();
+  const canvas = document.getElementById('c');
+  const st = SC.stage(canvas, W, H, draw);
+  caption('一道很厚的墙。街上的人都打着伞，低着头。');
+  ui();
+  // With reduced motion nothing redraws on its own, so look in four times a second and redraw only when something changed.
+  let shown = '';
+  setInterval(() => {
+    const now = clock(); step(now);
+    const key = cracks.length + '|' + webs.length + '|' + glows.map(g => g.i).join(',');
+    if (key !== shown){ shown = key; st.redraw(); }
+  }, 250);
+  document.getElementById('back').addEventListener('click', () => go(-STEP));
+  document.getElementById('fwd').addEventListener('click', () => go(STEP));
+  document.getElementById('hunt').addEventListener('click', () => {
+    hunt = !hunt;
+    caption(hunt ? '你开始专门找那道缝。' : '你不找了，接着走。');
+    ui(); st.redraw();
+  });
+  canvas.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft') go(-STEP);
+    else if (e.key === 'ArrowRight') go(STEP);
+    else return;
+    e.preventDefault && e.preventDefault();
+  });
+})();
+</script>
+</body>
+</html>
